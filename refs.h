@@ -575,5 +575,6 @@ int refs_read_ref_full(struct ref_store *refs,
 		       unsigned char *sha1, int *flags);
 int refs_read_ref(struct ref_store *refs,
 		  const char *refname, unsigned char *sha1);
+int refs_head_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
 
 #endif /* REFS_H */
