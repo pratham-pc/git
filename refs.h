@@ -577,5 +577,10 @@ int refs_read_ref(struct ref_store *refs,
 		  const char *refname, unsigned char *sha1);
 int refs_head_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
 int refs_for_each_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
+int refs_for_each_ref_in(struct ref_store *refs, const char *prefix,
+			 each_ref_fn fn, void *cb_data);
+int refs_for_each_tag_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
+int refs_for_each_branch_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
+int refs_for_each_remote_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
 
 #endif /* REFS_H */
