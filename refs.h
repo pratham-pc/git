@@ -570,5 +570,10 @@ int refs_create_symref(struct ref_store *refs,
 		       const char *refname,
 		       const char *target,
 		       const char *logmsg);
+int refs_read_ref_full(struct ref_store *refs,
+		       const char *refname, int resolve_flags,
+		       unsigned char *sha1, int *flags);
+int refs_read_ref(struct ref_store *refs,
+		  const char *refname, unsigned char *sha1);
 
 #endif /* REFS_H */

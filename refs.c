@@ -186,16 +186,29 @@ struct ref_filter {
 	void *cb_data;
 };
 
-int read_ref_full(const char *refname, int resolve_flags, unsigned char *sha1, int *flags)
+int refs_read_ref_full(struct ref_store *refs,
+		       const char *refname, int resolve_flags,
+		       unsigned char *sha1, int *flags)
 {
-	if (resolve_ref_unsafe(refname, resolve_flags, sha1, flags))
+	if (refs_resolve_ref_unsafe(refs, refname, resolve_flags, sha1, flags))
 		return 0;
 	return -1;
 }
 
+int read_ref_full(const char *refname, int resolve_flags, unsigned char *sha1, int *flags)
+{
+	return refs_read_ref_full(get_main_ref_store(), refname,
+				  resolve_flags, sha1, flags);
+}
+
+int refs_read_ref(struct ref_store *refs, const char *refname, unsigned char *sha1)
+{
+	return refs_read_ref_full(refs, refname, RESOLVE_REF_READING, sha1, NULL);
+}
+
 int read_ref(const char *refname, unsigned char *sha1)
 {
-	return read_ref_full(refname, RESOLVE_REF_READING, sha1, NULL);
+	return refs_read_ref(get_main_ref_store(), refname, sha1);
 }
 
 int ref_exists(const char *refname)
