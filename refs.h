@@ -574,5 +574,8 @@ int refs_for_each_ref_in(struct ref_store *refs, const char *prefix,
 int refs_for_each_tag_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
 int refs_for_each_branch_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
 int refs_for_each_remote_ref(struct ref_store *refs, each_ref_fn fn, void *cb_data);
+int refs_for_each_reflog(struct ref_store *refs, each_ref_fn fn, void *cb_data);
+int refs_for_each_reflog_ent(struct ref_store *refs, const char *refname,
+			     each_reflog_ent_fn fn, void *cb_data);
 
 #endif /* REFS_H */

@@ -1597,14 +1597,18 @@ int verify_refname_available(const char *refname,
 	return refs->be->verify_refname_available(refs, refname, extra, skip, err);
 }
 
-int for_each_reflog(each_ref_fn fn, void *cb_data)
+int refs_for_each_reflog(struct ref_store *refs, each_ref_fn fn, void *cb_data)
 {
-	struct ref_store *refs = get_main_ref_store();
 	struct ref_iterator *iter;
 
 	iter = refs->be->reflog_iterator_begin(refs);
 
 	return do_for_each_ref_iterator(iter, fn, cb_data);
+}
+
+int for_each_reflog(each_ref_fn fn, void *cb_data)
+{
+	return refs_for_each_reflog(get_main_ref_store(), fn, cb_data);
 }
 
 int for_each_reflog_ent_reverse(const char *refname, each_reflog_ent_fn fn,
@@ -1616,12 +1620,17 @@ int for_each_reflog_ent_reverse(const char *refname, each_reflog_ent_fn fn,
 						     fn, cb_data);
 }
 
+int refs_for_each_reflog_ent(struct ref_store *refs, const char *refname,
+			     each_reflog_ent_fn fn, void *cb_data)
+{
+	return refs->be->for_each_reflog_ent(refs, refname, fn, cb_data);
+}
+
 int for_each_reflog_ent(const char *refname, each_reflog_ent_fn fn,
 			void *cb_data)
 {
-	struct ref_store *refs = get_main_ref_store();
-
-	return refs->be->for_each_reflog_ent(refs, refname, fn, cb_data);
+	return refs_for_each_reflog_ent(get_main_ref_store(),
+					refname, fn, cb_data);
 }
 
 int reflog_exists(const char *refname)
