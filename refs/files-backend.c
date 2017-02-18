@@ -924,6 +924,9 @@ struct files_ref_store {
 	 */
 	const char *submodule;
 
+	struct strbuf gitdir;
+	struct strbuf gitcommondir;
+
 	struct ref_entry *loose;
 	struct packed_ref_cache *packed;
 };
@@ -937,15 +940,33 @@ static void files_path(struct files_ref_store *refs, struct strbuf *sb,
 {
 	struct strbuf tmp = STRBUF_INIT;
 	va_list vap;
+	const char *ref;
 
 	va_start(vap, fmt);
 	strbuf_vaddf(&tmp, fmt, vap);
 	va_end(vap);
-	if (refs->submodule)
+	if (refs->submodule) {
 		strbuf_git_path_submodule(sb, refs->submodule,
 					  "%s", tmp.buf);
-	else
-		strbuf_git_path(sb, "%s", tmp.buf);
+	} else if (!strcmp(tmp.buf, "packed-refs") ||
+		   !strcmp(tmp.buf, "logs")) { /* non refname path */
+		strbuf_addf(sb, "%s/%s", refs->gitcommondir.buf, tmp.buf);
+	} else if (skip_prefix(tmp.buf, "logs/", &ref)) { /* reflog */
+		if (is_per_worktree_ref(ref))
+			strbuf_addf(sb, "%s/%s", refs->gitdir.buf, tmp.buf);
+		else
+			strbuf_addf(sb, "%s/%s", refs->gitcommondir.buf, tmp.buf);
+	} else {		/* refname */
+		switch (ref_type(tmp.buf)) {
+		case REF_TYPE_PER_WORKTREE:
+		case REF_TYPE_PSEUDOREF:
+			strbuf_addf(sb, "%s/%s", refs->gitdir.buf, tmp.buf);
+			break;
+		case REF_TYPE_NORMAL:
+			strbuf_addf(sb, "%s/%s", refs->gitcommondir.buf, tmp.buf);
+			break;
+		}
+	}
 	strbuf_release(&tmp);
 }
 
@@ -1004,7 +1025,15 @@ static struct ref_store *files_ref_store_create(const char *submodule)
 
 	base_ref_store_init(ref_store, &refs_be_files);
 
-	refs->submodule = xstrdup_or_null(submodule);
+	strbuf_init(&refs->gitdir, 0);
+	strbuf_init(&refs->gitcommondir, 0);
+
+	if (submodule) {
+		refs->submodule = xstrdup(submodule);
+	} else {
+		strbuf_addstr(&refs->gitdir, get_git_dir());
+		strbuf_addstr(&refs->gitcommondir, get_git_common_dir());
+	}
 
 	return ref_store;
 }
