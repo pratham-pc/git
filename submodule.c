@@ -545,6 +545,51 @@ void set_config_fetch_recurse_submodules(int value)
 	config_fetch_recurse_submodules = value;
 }
 
+#define MODULE_LIST_INIT { NULL, 0, 0 }
+
+void check_prefix_inside_submodule(const char *prefix)
+{
+	struct module_list list = MODULE_LIST_INIT;
+	int i;
+
+	if (read_cache() < 0)
+		die(_("index file corrupt"));
+
+	for (i = 0; i < active_nr; i++) {
+		const struct cache_entry *ce = active_cache[i];
+
+		if (!S_ISGITLINK(ce->ce_mode))
+				continue;
+
+		ALLOC_GROW(list.entries, list.nr + 1, list.alloc);
+		list.entries[list.nr++] = ce;
+		while (i + 1 < active_nr &&
+			!strcmp(ce->name, active_cache[i + 1]->name))
+			 /*
+			  * Skip entries with the same name in different stages
+			  * to make sure an entry is returned only once.
+			  */
+			i++;
+	}
+
+	for(i = 0; i < list.nr; i++) {
+		if(strlen((*list.entries[i]).name) ==  strlen(prefix)) {
+			if (!strcmp((*list.entries[i]).name, prefix)) {
+				/* This case cannot happen because */
+				die("BUG: prefixes end with '/', but we do not record ending slashes in the index");
+			}
+		}
+		else if(strlen((*list.entries[i]).name) ==  strlen(prefix)-1) {
+			const char *out = NULL;
+			if(skip_prefix(prefix, (*list.entries[i]).name, &out)) {
+				if(strlen(out) == 1 && out[0] == '/')
+					die(_("command from inside unpopulated submodule '%s' not supported."), (*list.entries[i]).name);
+			}
+		}
+	}
+
+}
+
 static int has_remote(const char *refname, const struct object_id *oid,
 		      int flags, void *cb_data)
 {

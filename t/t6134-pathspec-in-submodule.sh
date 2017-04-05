@@ -25,7 +25,7 @@ test_expect_success 'error message for path inside submodule' '
 '
 
 cat <<EOF >expect
-fatal: Pathspec '.' is in submodule 'sub'
+fatal: command from inside unpopulated submodule 'sub' not supported.
 EOF
 
 test_expect_success 'error message for path inside submodule from within submodule' '

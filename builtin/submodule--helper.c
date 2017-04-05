@@ -219,10 +219,6 @@ static int resolve_relative_url_test(int argc, const char **argv, const char *pr
 	return 0;
 }
 
-struct module_list {
-	const struct cache_entry **entries;
-	int alloc, nr;
-};
 #define MODULE_LIST_INIT { NULL, 0, 0 }
 
 static int module_list_compute(int argc, const char **argv,
