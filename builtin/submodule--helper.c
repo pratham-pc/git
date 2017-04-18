@@ -13,6 +13,8 @@
 #include "refs.h"
 #include "connect.h"
 
+typedef void (*submodule_list_func_t)(const struct cache_entry *list_item, void *cb_data);
+
 static char *get_default_remote(void)
 {
 	char *dest = NULL, *ret;
@@ -219,6 +221,23 @@ static int resolve_relative_url_test(int argc, const char **argv, const char *pr
 	return 0;
 }
 
+static char *get_submodule_displaypath(const char *path, const char *prefix)
+{
+	const char *super_prefix = get_super_prefix();
+
+	if (prefix && super_prefix) {
+		BUG("cannot have prefix '%s' and superprefix '%s'",
+		    prefix, super_prefix);
+	} else if (prefix) {
+		struct strbuf sb = STRBUF_INIT;
+		return xstrdup(relative_path(path, prefix, &sb));
+	} else if (super_prefix) {
+		return xstrfmt("%s/%s", super_prefix, path);
+	} else {
+		return xstrdup(path);
+	}
+}
+
 struct module_list {
 	const struct cache_entry **entries;
 	int alloc, nr;
@@ -329,6 +348,15 @@ static int module_list(int argc, const char **argv, const char *prefix)
 		utf8_fprintf(stdout, "%s\n", ce->name);
 	}
 	return 0;
+}
+
+static void for_each_submodule_list(const struct module_list list, submodule_list_func_t fn, void *cb_data)
+{
+	int i;
+	for (i = 0; i < list.nr; i++)
+		fn(list.entries[i], cb_data);
+
+	return;
 }
 
 static void init_submodule(const char *path, const char *prefix, int quiet)
@@ -483,6 +511,119 @@ static int module_name(int argc, const char **argv, const char *prefix)
 		    argv[1]);
 
 	printf("%s\n", sub->name);
+
+	return 0;
+}
+
+struct cb_foreach {
+	int argc;
+	const char **argv;
+	const char *prefix;
+	unsigned int quiet: 1;
+	unsigned int recursive: 1;
+};
+#define CB_FOREACH_INIT { 0, NULL, 0, 0 }
+
+static void runcommand_in_submodule(const struct cache_entry *list_item, void *cb_data)
+{
+	struct cb_foreach *info = cb_data;
+	char *toplevel = xgetcwd();
+	const struct submodule *sub;
+	struct child_process cp = CHILD_PROCESS_INIT;
+	char* displaypath = NULL;
+	int i;
+
+	/* Only loads from .gitmodules, no overlay with .git/config */
+	gitmodules_config();
+
+	displaypath = get_submodule_displaypath(list_item->name, info->prefix);
+
+	sub = submodule_from_path(null_sha1, list_item->name);
+
+	if (!sub)
+		die(_("No url found for submodule path '%s' in .gitmodules"),
+		      displaypath);
+
+	prepare_submodule_repo_env(&cp.env_array);
+	cp.use_shell = 1;
+	cp.dir = list_item->name;
+
+	argv_array_pushf(&cp.env_array, "name=%s", sub->name);
+	argv_array_pushf(&cp.env_array, "sm_path=%s", displaypath);
+	argv_array_pushf(&cp.env_array, "path=%s", list_item->name);
+	argv_array_pushf(&cp.env_array, "sha1=%s", oid_to_hex(&list_item->oid));
+	argv_array_pushf(&cp.env_array, "toplevel=%s", toplevel);
+
+	for (i = 0; i < info->argc; i++)
+		argv_array_push(&cp.args, info->argv[i]);
+
+	if (!is_submodule_populated_gently(list_item->name, NULL))
+		return;
+
+	if (!info->quiet)
+		printf(_("Entering '%s'\n"), displaypath);
+	if (info->argv[0] && run_command(&cp))
+		die(_("run_command returned non-zero status for %s\n."), displaypath);
+
+	if (info->recursive) {
+		struct child_process cpr = CHILD_PROCESS_INIT;
+
+		cpr.use_shell = 1;
+		cpr.dir = list_item->name;
+		prepare_submodule_repo_env(&cpr.env_array);
+
+		argv_array_pushl(&cpr.args, "git", "--super-prefix", displaypath,
+				 "submodule--helper", "foreach", "--recursive", NULL);
+
+		if (info->quiet)
+			argv_array_push(&cpr.args, "--quiet");
+
+		for (i = 0; i < info->argc; i++)
+			argv_array_push(&cpr.args, info->argv[i]);
+
+		if (run_command(&cpr))
+			die(_("run_command returned non-zero status while \
+			      recuring in the nested submodules of %s\n."),
+			      displaypath);
+	}
+
+	free(displaypath);
+	free(toplevel);
+}
+
+static int module_foreach(int argc, const char **argv, const char *prefix)
+{
+	struct cb_foreach info = CB_FOREACH_INIT;
+	struct pathspec pathspec;
+	struct module_list list = MODULE_LIST_INIT;
+	int quiet = 0;
+	int recursive = 0;
+
+	struct option module_foreach_options[] = {
+		OPT__QUIET(&quiet, N_("Suppress output of entering each submodule command")),
+		OPT_BOOL(0, "recursive", &recursive,
+			 N_("Recurse into nested submodules")),
+		OPT_END()
+	};
+
+	const char *const git_submodule_helper_usage[] = {
+		N_("git submodule--helper foreach [--quiet] [--recursive] <command>"),
+		NULL
+	};
+
+	argc = parse_options(argc, argv, prefix, module_foreach_options,
+			     git_submodule_helper_usage, PARSE_OPT_KEEP_UNKNOWN);
+
+	if (module_list_compute(0, NULL, prefix, &pathspec, &list) < 0)
+		die("BUG: module_list_compute should not choke on empty pathspec");
+
+	info.argc = argc;
+	info.argv = argv;
+	info.prefix = prefix;
+	info.quiet = !!quiet;
+	info.recursive = !!recursive;
+
+	for_each_submodule_list(list, runcommand_in_submodule, &info);
 
 	return 0;
 }
@@ -1212,6 +1353,7 @@ static struct cmd_struct commands[] = {
 	{"relative-path", resolve_relative_path, 0},
 	{"resolve-relative-url", resolve_relative_url, 0},
 	{"resolve-relative-url-test", resolve_relative_url_test, 0},
+	{"foreach", module_foreach, SUPPORT_SUPER_PREFIX},
 	{"init", module_init, SUPPORT_SUPER_PREFIX},
 	{"remote-branch", resolve_remote_submodule_branch, 0},
 	{"push-check", push_check, 0},
