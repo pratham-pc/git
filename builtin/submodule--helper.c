@@ -501,7 +501,6 @@ static void runcommand_in_submodule(int argc, const char **argv, const char *pre
 	struct child_process cp = CHILD_PROCESS_INIT;
 	struct strbuf sb = STRBUF_INIT;
 	struct strbuf sub_sha1 = STRBUF_INIT;
-	struct strbuf file = STRBUF_INIT;
 	char* displaypath = NULL;
 	int i;
 
@@ -509,7 +508,8 @@ static void runcommand_in_submodule(int argc, const char **argv, const char *pre
 	gitmodules_config();
 
 	if (prefix && get_super_prefix()) {
-		die("BUG: cannot have prefix and superprefix");
+		die("BUG: cannot have prefix '%s' and superprefix '%s'",
+		    prefix, get_super_prefix());
 	} else if (prefix) {
 		displaypath = xstrdup(relative_path(list_item->name, prefix, &sb));
 	} else if (get_super_prefix()) {
@@ -529,37 +529,42 @@ static void runcommand_in_submodule(int argc, const char **argv, const char *pre
 
 	argv_array_pushf(&cp.env_array, "name=%s", sub->name);
 	argv_array_pushf(&cp.env_array, "sm_path=%s", displaypath);
-	argv_array_pushf(&cp.env_array, "path=%s", displaypath);
+	argv_array_pushf(&cp.env_array, "path=%s", list_item->name);
 	argv_array_pushf(&cp.env_array, "sha1=%s", sub_sha1.buf);
 	argv_array_pushf(&cp.env_array, "toplevel=%s", toplevel);
 
 	cp.use_shell = 1;
 	cp.dir = list_item->name;
+	prepare_submodule_repo_env(&cp.env_array);
+	argv_array_pushf(&cp.env_array, "%s", GIT_SUPER_PREFIX_ENVIRONMENT);
 
 	for (i = 0; i < argc; i++)
 		argv_array_push(&cp.args, argv[i]);
 
-	strbuf_addf(&file, "%s/.git", list_item->name);
-
-	if (is_submodule_populated_gently(list_item->name, NULL)) {
-		if (!quiet)
-			printf(_("Entering '%s'\n"), displaypath);
-		if (run_command(&cp))
-			die(_("run_command returned non-zero status for %s\n."), displaypath);
+	if (!is_submodule_populated_gently(list_item->name, NULL)) {
+		trace_printf("Skipping %s as it is not populated", list_item->name);
+		return;
 	}
+	
+	if (!quiet)
+		printf(_("Entering '%s'\n"), displaypath);
+	if (run_command(&cp))
+		die(_("run_command returned non-zero status for %s\n."), displaypath);
 
 	if (recursive) {
 		struct child_process cpr = CHILD_PROCESS_INIT;
 
 		cpr.use_shell = 1;
 		cpr.dir = list_item->name;
+		prepare_submodule_repo_env(&cpr.env_array);
+
 		argv_array_pushl(&cpr.args, "git", "--super-prefix", displaypath,
 				 "submodule--helper", NULL);
 
+		argv_array_pushl(&cpr.args, "foreach", "--recursive", NULL);
+
 		if (quiet)
 			argv_array_push(&cpr.args, "--quiet");
-
-		argv_array_pushl(&cpr.args, "foreach", "--recursive", NULL);
 
 		for (i = 0; i < argc; i++)
 			argv_array_push(&cpr.args, argv[i]);
@@ -567,7 +572,6 @@ static void runcommand_in_submodule(int argc, const char **argv, const char *pre
 		run_command(&cpr);
 	}
 
-	strbuf_release(&file);
 	strbuf_release(&sub_sha1);
 	strbuf_release(&sb);
 	free(displaypath);
@@ -580,17 +584,8 @@ static void for_each_submodule_list(int argc, const char **argv, const char *pre
 				    struct module_list list, int quiet, int recursive)
 {
 	int i;
-	for (i = 0; i < list.nr; i++) {
-		if (prefix) {
-			const char *out = NULL;
-			if (skip_prefix(prefix, list.entries[i]->name, &out)) {
-				if (out && out[0] == '/' && !out + 1)
-					return;
-			}
-		}
-
+	for (i = 0; i < list.nr; i++)
 		fn(argc, argv, prefix, list.entries[i], quiet, recursive);
-	}
 
 	return;
 }
