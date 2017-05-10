@@ -195,10 +195,15 @@ int sane_execvp(const char *file, char * const argv[])
 
 static const char **prepare_shell_cmd(struct argv_array *out, const char **argv)
 {
-	if (!argv[0])
-		die("BUG: shell command is empty");
-
-	if (strcspn(argv[0], "|&;<>()$`\\\"' \t\n*?[#~=%") != strlen(argv[0])) {
+	if (!argv[0]) {
+#ifndef GIT_WINDOWS_NATIVE
+                 argv_array_push(out, SHELL_PATH);
+#else
+                argv_array_push(out, "sh");
+#endif
+                  argv_array_push(out, "-c");
+		argv_array_push(out, ":");
+} else if (strcspn(argv[0], "|&;<>()$`\\\"' \t\n*?[#~=%") != strlen(argv[0])) {
 #ifndef GIT_WINDOWS_NATIVE
 		argv_array_push(out, SHELL_PATH);
 #else
