@@ -548,8 +548,10 @@ static void runcommand_in_submodule(int argc, const char **argv, const char *pre
 	
 	if (!quiet)
 		printf(_("Entering '%s'\n"), displaypath);
-	if (run_command(&cp))
-		die(_("run_command returned non-zero status for %s\n."), displaypath);
+	
+	if(cp.args.argc)
+		if (run_command(&cp))
+			die(_("run_command returned non-zero status for %s\n."), displaypath);
 
 	if (recursive) {
 		struct child_process cpr = CHILD_PROCESS_INIT;
