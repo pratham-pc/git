@@ -111,8 +111,8 @@ static void annotate_refs_with_symref_info(struct ref *ref)
  */
 struct ref **get_remote_heads(int in, char *src_buf, size_t src_len,
 			      struct ref **list, unsigned int flags,
-			      struct sha1_array *extra_have,
-			      struct sha1_array *shallow_points)
+			      struct oid_array *extra_have,
+			      struct oid_array *shallow_points)
 {
 	struct ref **orig_list = list;
 
@@ -153,7 +153,7 @@ struct ref **get_remote_heads(int in, char *src_buf, size_t src_len,
 				die("protocol error: expected shallow sha-1, got '%s'", arg);
 			if (!shallow_points)
 				die("repository on the other end cannot be shallow");
-			sha1_array_append(shallow_points, old_oid.hash);
+			oid_array_append(shallow_points, &old_oid);
 			continue;
 		}
 
@@ -169,7 +169,7 @@ struct ref **get_remote_heads(int in, char *src_buf, size_t src_len,
 		}
 
 		if (extra_have && !strcmp(name, ".have")) {
-			sha1_array_append(extra_have, old_oid.hash);
+			oid_array_append(extra_have, &old_oid);
 			continue;
 		}
 
@@ -730,7 +730,7 @@ static void handle_ssh_variant(const char *ssh_command, int is_cmdline,
 		const char **ssh_argv;
 
 		p = xstrdup(ssh_command);
-		if (split_cmdline(p, &ssh_argv)) {
+		if (split_cmdline(p, &ssh_argv) > 0) {
 			variant = basename((char *)ssh_argv[0]);
 			/*
 			 * At this point, variant points into the buffer
@@ -738,8 +738,10 @@ static void handle_ssh_variant(const char *ssh_command, int is_cmdline,
 			 * any longer.
 			 */
 			free(ssh_argv);
-		} else
+		} else {
+			free(p);
 			return;
+		}
 	}
 
 	if (!strcasecmp(variant, "plink") ||

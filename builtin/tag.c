@@ -22,7 +22,7 @@
 static const char * const git_tag_usage[] = {
 	N_("git tag [-a | -s | -u <key-id>] [-f] [-m <msg> | -F <file>] <tagname> [<head>]"),
 	N_("git tag -d <tagname>..."),
-	N_("git tag -l [-n[<num>]] [--contains <commit>] [--points-at <object>]"
+	N_("git tag -l [-n[<num>]] [--contains <commit>] [--no-contains <commit>] [--points-at <object>]"
 		"\n\t\t[--format=<format>] [--[no-]merged [<commit>]] [<pattern>...]"),
 	N_("git tag -v [--format=<format>] <tagname>..."),
 	NULL
@@ -72,25 +72,22 @@ static int for_each_tag_name(const char **argv, each_tag_name_fn fn,
 			     const void *cb_data)
 {
 	const char **p;
-	char ref[PATH_MAX];
+	struct strbuf ref = STRBUF_INIT;
 	int had_error = 0;
 	unsigned char sha1[20];
 
 	for (p = argv; *p; p++) {
-		if (snprintf(ref, sizeof(ref), "refs/tags/%s", *p)
-					>= sizeof(ref)) {
-			error(_("tag name too long: %.*s..."), 50, *p);
-			had_error = 1;
-			continue;
-		}
-		if (read_ref(ref, sha1)) {
+		strbuf_reset(&ref);
+		strbuf_addf(&ref, "refs/tags/%s", *p);
+		if (read_ref(ref.buf, sha1)) {
 			error(_("tag '%s' not found."), *p);
 			had_error = 1;
 			continue;
 		}
-		if (fn(*p, ref, sha1, cb_data))
+		if (fn(*p, ref.buf, sha1, cb_data))
 			had_error = 1;
 	}
+	strbuf_release(&ref);
 	return had_error;
 }
 
@@ -231,26 +228,22 @@ static void create_tag(const unsigned char *object, const char *tag,
 		       unsigned char *prev, unsigned char *result)
 {
 	enum object_type type;
-	char header_buf[1024];
-	int header_len;
+	struct strbuf header = STRBUF_INIT;
 	char *path = NULL;
 
 	type = sha1_object_info(object, NULL);
 	if (type <= OBJ_NONE)
 	    die(_("bad object type."));
 
-	header_len = snprintf(header_buf, sizeof(header_buf),
-			  "object %s\n"
-			  "type %s\n"
-			  "tag %s\n"
-			  "tagger %s\n\n",
-			  sha1_to_hex(object),
-			  typename(type),
-			  tag,
-			  git_committer_info(IDENT_STRICT));
-
-	if (header_len > sizeof(header_buf) - 1)
-		die(_("tag header too big."));
+	strbuf_addf(&header,
+		    "object %s\n"
+		    "type %s\n"
+		    "tag %s\n"
+		    "tagger %s\n\n",
+		    sha1_to_hex(object),
+		    typename(type),
+		    tag,
+		    git_committer_info(IDENT_STRICT));
 
 	if (!opt->message_given) {
 		int fd;
@@ -288,7 +281,8 @@ static void create_tag(const unsigned char *object, const char *tag,
 	if (!opt->message_given && !buf->len)
 		die(_("no tag message?"));
 
-	strbuf_insert(buf, 0, header_buf, header_len);
+	strbuf_insert(buf, 0, header.buf, header.len);
+	strbuf_release(&header);
 
 	if (build_tag_object(buf, opt->sign, result) < 0) {
 		if (path)
@@ -315,7 +309,7 @@ static void create_reflog_msg(const unsigned char *sha1, struct strbuf *sb)
 	if (rla) {
 		strbuf_addstr(sb, rla);
 	} else {
-		strbuf_addstr(sb, _("tag: tagging "));
+		strbuf_addstr(sb, "tag: tagging ");
 		strbuf_add_unique_abbrev(sb, sha1, DEFAULT_ABBREV);
 	}
 
@@ -323,14 +317,14 @@ static void create_reflog_msg(const unsigned char *sha1, struct strbuf *sb)
 	type = sha1_object_info(sha1, NULL);
 	switch (type) {
 	default:
-		strbuf_addstr(sb, _("object of unknown type"));
+		strbuf_addstr(sb, "object of unknown type");
 		break;
 	case OBJ_COMMIT:
 		if ((buf = read_sha1_file(sha1, &type, &size)) != NULL) {
 			subject_len = find_commit_subject(buf, &subject_start);
 			strbuf_insert(sb, sb->len, subject_start, subject_len);
 		} else {
-			strbuf_addstr(sb, _("commit object"));
+			strbuf_addstr(sb, "commit object");
 		}
 		free(buf);
 
@@ -338,13 +332,13 @@ static void create_reflog_msg(const unsigned char *sha1, struct strbuf *sb)
 			strbuf_addf(sb, ", %s", show_date(c->date, 0, DATE_MODE(SHORT)));
 		break;
 	case OBJ_TREE:
-		strbuf_addstr(sb, _("tree object"));
+		strbuf_addstr(sb, "tree object");
 		break;
 	case OBJ_BLOB:
-		strbuf_addstr(sb, _("blob object"));
+		strbuf_addstr(sb, "blob object");
 		break;
 	case OBJ_TAG:
-		strbuf_addstr(sb, _("other tag object"));
+		strbuf_addstr(sb, "other tag object");
 		break;
 	}
 	strbuf_addch(sb, ')');
@@ -424,14 +418,17 @@ int cmd_tag(int argc, const char **argv, const char *prefix)
 		OPT_GROUP(N_("Tag listing options")),
 		OPT_COLUMN(0, "column", &colopts, N_("show tag list in columns")),
 		OPT_CONTAINS(&filter.with_commit, N_("print only tags that contain the commit")),
+		OPT_NO_CONTAINS(&filter.no_commit, N_("print only tags that don't contain the commit")),
 		OPT_WITH(&filter.with_commit, N_("print only tags that contain the commit")),
+		OPT_WITHOUT(&filter.no_commit, N_("print only tags that don't contain the commit")),
 		OPT_MERGED(&filter, N_("print only tags that are merged")),
 		OPT_NO_MERGED(&filter, N_("print only tags that are not merged")),
 		OPT_CALLBACK(0 , "sort", sorting_tail, N_("key"),
 			     N_("field name to sort on"), &parse_opt_ref_sorting),
 		{
 			OPTION_CALLBACK, 0, "points-at", &filter.points_at, N_("object"),
-			N_("print only tags of the object"), 0, parse_opt_object_name
+			N_("print only tags of the object"), PARSE_OPT_LASTARG_DEFAULT,
+			parse_opt_object_name, (intptr_t) "HEAD"
 		},
 		OPT_STRING(  0 , "format", &format, N_("format"), N_("format to use for the output")),
 		OPT_BOOL('i', "ignore-case", &icase, N_("sorting and filtering are case insensitive")),
@@ -454,8 +451,14 @@ int cmd_tag(int argc, const char **argv, const char *prefix)
 	}
 	create_tag_object = (opt.sign || annotate || msg.given || msgfile);
 
-	if (argc == 0 && !cmdmode)
-		cmdmode = 'l';
+	if (!cmdmode) {
+		if (argc == 0)
+			cmdmode = 'l';
+		else if (filter.with_commit || filter.no_commit ||
+			 filter.points_at.nr || filter.merge_commit ||
+			 filter.lines != -1)
+			cmdmode = 'l';
+	}
 
 	if ((create_tag_object || force) && (cmdmode != 0))
 		usage_with_options(git_tag_usage, options);
@@ -485,13 +488,15 @@ int cmd_tag(int argc, const char **argv, const char *prefix)
 		return ret;
 	}
 	if (filter.lines != -1)
-		die(_("-n option is only allowed with -l."));
+		die(_("-n option is only allowed in list mode"));
 	if (filter.with_commit)
-		die(_("--contains option is only allowed with -l."));
+		die(_("--contains option is only allowed in list mode"));
+	if (filter.no_commit)
+		die(_("--no-contains option is only allowed in list mode"));
 	if (filter.points_at.nr)
-		die(_("--points-at option is only allowed with -l."));
+		die(_("--points-at option is only allowed in list mode"));
 	if (filter.merge_commit)
-		die(_("--merged and --no-merged option are only allowed with -l"));
+		die(_("--merged and --no-merged options are only allowed in list mode"));
 	if (cmdmode == 'd')
 		return for_each_tag_name(argv, delete_tag, NULL);
 	if (cmdmode == 'v') {
