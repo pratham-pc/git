@@ -563,6 +563,165 @@ static int module_init(int argc, const char **argv, const char *prefix)
 	return 0;
 }
 
+struct cb_status {
+	const char *prefix;
+	unsigned int quiet: 1;
+	unsigned int cached: 1;
+	unsigned int recursive: 1;
+};
+#define CB_STATUS_INIT { NULL, 0, 0, 0 }
+
+static void status_submodule(const struct cache_entry *list_item, void *cb_data)
+{
+	struct cb_status *info = cb_data;
+	struct strbuf sub_sha1 = STRBUF_INIT;
+	char *displaypath;
+	struct argv_array diff_files_arg = ARGV_ARRAY_INIT;
+
+	if (!submodule_from_path(null_sha1, list_item->name))
+		die(_("no submodule mapping found in .gitmodules for path '%s'"),
+		      list_item->name);
+
+	displaypath = get_submodule_displaypath(list_item->name, info->prefix);
+
+	strbuf_addstr(&sub_sha1, oid_to_hex(&list_item->oid));
+
+	if (list_item->ce_flags) {
+		if (!info->quiet)
+			printf(_("U%s %s\n"), sha1_to_hex(null_sha1),
+				 displaypath);
+		free(displaypath);
+		strbuf_release(&sub_sha1);
+		return;
+	}
+
+	if (!is_submodule_initialized(list_item->name)) {
+		if (!info->quiet)
+			printf(_("-%s %s\n"), sub_sha1.buf, displaypath);
+		free(displaypath);
+		strbuf_release(&sub_sha1);
+		return;
+	}
+
+	argv_array_pushl(&diff_files_arg, "diff-files", "--ignore-submodules=dirty",
+			"--quiet", "--", list_item->name, NULL);
+
+	if (!cmd_diff_files(diff_files_arg.argc, diff_files_arg.argv ,
+			    info->prefix)) {
+		struct argv_array name_rev_args = ARGV_ARRAY_INIT;
+		argv_array_pushl(&name_rev_args, "set-name-rev", list_item->name,
+				sub_sha1.buf, NULL);
+		if (!info->quiet) {
+			printf(_(" %s %s"), sub_sha1.buf, displaypath);
+			set_name_rev(name_rev_args.argc, name_rev_args.argv,
+				     info->prefix);
+		}
+	} else {
+		struct argv_array name_rev_args = ARGV_ARRAY_INIT;
+
+		if (info->cached == 0) {
+			struct child_process cp = CHILD_PROCESS_INIT;
+			struct strbuf sb = STRBUF_INIT;
+
+			prepare_submodule_repo_env(&cp.env_array);
+			cp.dir = list_item->name;
+
+			argv_array_pushl(&cp.args, "git", "rev-parse",
+					 "--verify", "HEAD", NULL);
+
+			if (capture_command(&cp, &sb, 0))
+				die(_("could not run 'git rev-parse --verify"
+				      "HEAD' in submodule %s"),
+				      list_item->name);
+
+			strbuf_strip_suffix(&sb, "\n");
+			argv_array_pushl(&name_rev_args, "set-name-rev",
+					 list_item->name, sb.buf, NULL);
+
+			if (!info->quiet) {
+				printf(_("+%s %s"), sb.buf, displaypath);
+				set_name_rev(name_rev_args.argc,
+					     name_rev_args.argv, info->prefix);
+			}
+
+			strbuf_release(&sb);
+		} else {
+
+			argv_array_pushl(&name_rev_args, "set-name-rev",
+					 list_item->name, sub_sha1.buf, NULL);
+
+			if (!info->quiet) {
+				printf(_("+%s %s"), sub_sha1.buf, displaypath);
+				set_name_rev(name_rev_args.argc,
+					     name_rev_args.argv, info->prefix);
+			}
+		}
+	}
+
+	if (info->recursive) {
+		struct child_process cpr = CHILD_PROCESS_INIT;
+
+		cpr.git_cmd = 1;
+		cpr.dir = list_item->name;
+		prepare_submodule_repo_env(&cpr.env_array);
+
+		argv_array_pushl(&cpr.args, "--super-prefix", displaypath,
+				 "submodule--helper", "status", "--recursive",
+				 NULL);
+
+		if (info->cached)
+			argv_array_push(&cpr.args, "--cached");
+
+		if (info->quiet)
+			argv_array_push(&cpr.args, "--quiet");
+
+		if (run_command(&cpr))
+			die(_("failed to recurse into submodule '%s'"),
+			      list_item->name);
+	}
+
+	free(displaypath);
+	strbuf_release(&sub_sha1);
+}
+
+static int module_status(int argc, const char **argv, const char *prefix)
+{
+	struct cb_status info;
+	struct pathspec pathspec;
+	struct module_list list = MODULE_LIST_INIT;
+	int quiet = 0;
+	int cached = 0;
+	int recursive = 0;
+
+	struct option module_status_options[] = {
+		OPT__QUIET(&quiet, N_("Suppress submodule status output")),
+		OPT_BOOL(0, "cached", &cached, N_("Use commit stored in the index instead of the one stored in the submodule HEAD")),
+		OPT_BOOL(0, "recursive", &recursive, N_("Recurse into nested submodules")),
+		OPT_END(),
+	};
+
+	const char *const git_submodule_helper_usage[] = {
+		N_("git submodule status [--quiet] [--cached] [--recursive] [<path>]"),
+		NULL
+	};
+
+	argc = parse_options(argc, argv, prefix, module_status_options,
+			     git_submodule_helper_usage, 0);
+
+	if (module_list_compute(argc, argv, prefix, &pathspec, &list) < 0)
+		return 1;
+
+	info.prefix = prefix;
+	info.quiet = quiet;
+	info.cached = cached;
+	info.recursive = recursive;
+
+	gitmodules_config();
+	for_each_submodule_list(list, status_submodule, &info);
+
+	return 0;
+}
+
 static int module_name(int argc, const char **argv, const char *prefix)
 {
 	const struct submodule *sub;
@@ -1427,6 +1586,7 @@ static struct cmd_struct commands[] = {
 	{"foreach", module_foreach, SUPPORT_SUPER_PREFIX},
 	{"set-name-rev", set_name_rev, 0},
 	{"init", module_init, SUPPORT_SUPER_PREFIX},
+	{"status", module_status, SUPPORT_SUPER_PREFIX},
 	{"remote-branch", resolve_remote_submodule_branch, 0},
 	{"push-check", push_check, 0},
 	{"absorb-git-dirs", absorb_git_dirs, SUPPORT_SUPER_PREFIX},
