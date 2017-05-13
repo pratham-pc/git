@@ -241,6 +241,71 @@ static char *get_submodule_displaypath(const char *path, const char *prefix)
 	}
 }
 
+enum describe_step {
+	step_bare = 0,
+	step_tags,
+	step_contains,
+	step_all_always,
+	step_end
+};
+
+static char *get_name_rev(int argc, const char **argv, const char *prefix)
+{
+	struct child_process cp;
+	struct strbuf sb = STRBUF_INIT;
+	enum describe_step cur_step;
+
+	for (cur_step = step_bare; cur_step < step_end; cur_step++) {
+		child_process_init(&cp);
+		prepare_submodule_repo_env(&cp.env_array);
+		cp.dir = argv[1];
+		cp.no_stderr = 1;
+
+		switch (cur_step) {
+			case step_bare:
+				argv_array_pushl(&cp.args, "git", "describe",
+						 argv[2], NULL);
+				break;
+			case step_tags:
+				argv_array_pushl(&cp.args, "git", "describe",
+						 "--tags", argv[2], NULL);
+				break;
+			case step_contains:
+				argv_array_pushl(&cp.args, "git", "describe",
+						 "--contains", argv[2], NULL);
+				break;
+			case step_all_always:
+				argv_array_pushl(&cp.args, "git", "describe",
+						 "--all", "--always", argv[2],
+						 NULL);
+				break;
+			default:
+				BUG("unknown describe step '%d'", cur_step);
+		}
+
+		if (!capture_command(&cp, &sb, 0) && sb.len) {
+			strbuf_strip_suffix(&sb, "\n");
+			return strbuf_detach(&sb, NULL);
+		}
+	}
+
+	strbuf_release(&sb);
+	return NULL;
+}
+
+static int set_name_rev(int argc, const char **argv, const char *prefix)
+{
+	char *namerev;
+	if (argc != 3)
+		die("set-name-rev only accepts two arguments: <path> <sha1>");
+
+	namerev = get_name_rev(argc, argv, prefix);
+	if (namerev[0])
+		printf(" (%s)\n", namerev);
+
+	return 0;
+}
+
 struct module_list {
 	const struct cache_entry **entries;
 	int alloc, nr;
@@ -1360,6 +1425,7 @@ static struct cmd_struct commands[] = {
 	{"resolve-relative-url", resolve_relative_url, 0},
 	{"resolve-relative-url-test", resolve_relative_url_test, 0},
 	{"foreach", module_foreach, SUPPORT_SUPER_PREFIX},
+	{"set-name-rev", set_name_rev, 0},
 	{"init", module_init, SUPPORT_SUPER_PREFIX},
 	{"remote-branch", resolve_remote_submodule_branch, 0},
 	{"push-check", push_check, 0},
