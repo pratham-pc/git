@@ -219,6 +219,26 @@ static int resolve_relative_url_test(int argc, const char **argv, const char *pr
 	return 0;
 }
 
+static int resolve_name_rev(int argc, const char **argv, const char *prefix) {
+	struct child_process cp = CHILD_PROCESS_INIT;
+
+	if (argc != 3)
+		die("resolve-name-rev only accepts two arguments: <path> <sha1>");
+
+	cp.use_shell = 1; 
+	cp.dir = argv[1];
+	prepare_submodule_repo_env(&cp.env_array);
+	argv_array_pushf(&cp.args, "git describe %s 2>/dev/null || \
+			 git describe --tags %s 2>/dev/null || \
+			 git describe --contains %s 2>/dev/null || \
+			 git describe --all --always %s",
+			 argv[2], argv[2], argv[2], argv[2]);
+
+	run_command(&cp);
+
+	return 0;
+}
+
 struct module_list {
 	const struct cache_entry **entries;
 	int alloc, nr;
@@ -1212,6 +1232,7 @@ static struct cmd_struct commands[] = {
 	{"relative-path", resolve_relative_path, 0},
 	{"resolve-relative-url", resolve_relative_url, 0},
 	{"resolve-relative-url-test", resolve_relative_url_test, 0},
+	{"resolve-name-rev", resolve_name_rev, 0},
 	{"init", module_init, SUPPORT_SUPER_PREFIX},
 	{"remote-branch", resolve_remote_submodule_branch, 0},
 	{"push-check", push_check, 0},

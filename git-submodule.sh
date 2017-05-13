@@ -758,18 +758,6 @@ cmd_update()
 	}
 }
 
-set_name_rev () {
-	revname=$( (
-		sanitize_submodule_env
-		cd "$1" && {
-			git describe "$2" 2>/dev/null ||
-			git describe --tags "$2" 2>/dev/null ||
-			git describe --contains "$2" 2>/dev/null ||
-			git describe --all --always "$2"
-		}
-	) )
-	test -z "$revname" || revname=" ($revname)"
-}
 #
 # Show commit summary for submodules in index or working tree
 #
@@ -1041,15 +1029,15 @@ cmd_status()
 		fi
 		if git diff-files --ignore-submodules=dirty --quiet -- "$sm_path"
 		then
-			set_name_rev "$sm_path" "$sha1"
-			say " $sha1 $displaypath$revname"
+			revname=$(git submodule--helper resolve-name-rev "$sm_path" "$sha1")
+			say " $sha1 $displaypath ($revname)"
 		else
 			if test -z "$cached"
 			then
 				sha1=$(sanitize_submodule_env; cd "$sm_path" && git rev-parse --verify HEAD)
 			fi
-			set_name_rev "$sm_path" "$sha1"
-			say "+$sha1 $displaypath$revname"
+			revname=$(git submodule--helper resolve-name-rev "$sm_path" "$sha1")
+			say "+$sha1 $displaypath ($revname)"
 		fi
 
 		if test -n "$recursive"
