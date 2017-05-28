@@ -43,6 +43,20 @@ static char *get_default_remote(void)
 	return ret;
 }
 
+static int print_default_remote(int argc, const char **argv, const char *prefix)
+{
+	const char *remote;
+
+	if (argc != 1)
+		die(_("submodule--helper print-default-remote takes no arguments"));
+
+	remote = get_default_remote();
+	if (remote)
+		puts(remote);
+
+	return !remote;
+}
+
 static int starts_with_dot_slash(const char *str)
 {
 	return str[0] == '.' && is_dir_sep(str[1]);
@@ -239,6 +253,23 @@ static char *get_submodule_displaypath(const char *path, const char *prefix)
 	} else {
 		return xstrdup(path);
 	}
+}
+
+static char *get_up_path(const char *path)
+{
+	int i = 0;
+	struct strbuf sb = STRBUF_INIT;
+
+	while (path[i]) {
+		if (path[i] == '/')
+			strbuf_addstr(&sb, "../");
+		i++;
+	}
+
+	if (path[i-1] != '/')
+		strbuf_addstr(&sb, "../");
+
+	return strbuf_detach(&sb, NULL);
 }
 
 struct module_list {
@@ -630,6 +661,140 @@ static int module_foreach(int argc, const char **argv, const char *prefix)
 
 	gitmodules_config();
 	for_each_submodule_list(list, runcommand_in_submodule, &info);
+
+	return 0;
+}
+
+struct cb_sync {
+	const char *prefix;
+	unsigned int quiet: 1;
+	unsigned int recursive: 1;
+};
+#define CB_SYNC_INIT { 0, NULL, NULL, 0, 0 }
+
+static void sync_submodule(const struct cache_entry *list_item, void *cb_data)
+{
+	struct cb_sync *info = cb_data;
+	const struct submodule *sub;
+	struct strbuf sb = STRBUF_INIT;
+	char *url, *sub_origin_url, *super_config_url, *displaypath;
+	struct child_process cp;
+
+	if (!is_submodule_initialized(list_item->name))
+		return;
+
+	sub = submodule_from_path(null_sha1, list_item->name);
+
+	url = xstrdup(sub->url);
+	if (!url)
+		die(_("no url found for submodule path '%s' in .gitmodules"),
+		      list_item->name);
+
+	if (starts_with_dot_dot_slash(url) || starts_with_dot_slash(url)) {
+		char *remoteurl, *up_path;
+		char *remote = get_default_remote();
+		struct strbuf remotesb = STRBUF_INIT;
+		strbuf_addf(&remotesb, "remote.%s.url", remote);
+		free(remote);
+
+		if (git_config_get_string(remotesb.buf, &remoteurl))
+			remoteurl = xgetcwd();
+		up_path = get_up_path(list_item->name);
+		sub_origin_url = relative_url(remoteurl, url, up_path);
+		super_config_url = relative_url(remoteurl, url, NULL);
+		strbuf_release(&remotesb);
+		free(up_path);
+		free(remoteurl);
+	} else {
+		sub_origin_url = url;
+		super_config_url = url;
+	}
+
+
+	displaypath = get_submodule_displaypath(list_item->name, info->prefix);
+
+	if (!info->quiet)
+		printf(_("Synchronizing submodule url for '%s'\n"), displaypath);
+
+	strbuf_addf(&sb, "submodule.%s.url", sub->name);
+	if (git_config_set_gently(sb.buf, super_config_url))
+		die(_("failed to register url for submodule path '%s'"),
+		      displaypath);
+	strbuf_release(&sb);
+	free(url);
+	free(super_config_url);
+
+	if (!is_submodule_populated_gently(list_item->name, NULL)) {
+		free(displaypath);
+		free(sub_origin_url);
+		return;
+	}
+
+	child_process_init(&cp);
+	prepare_submodule_repo_env(&cp.env_array);
+	cp.use_shell = 1;
+	cp.dir = list_item->name;
+	argv_array_pushl(&cp.args, "git config remote.$(git submodule--helper print-default-remote).url", sub_origin_url, NULL);
+
+	if (run_command(&cp))
+		die(_("failed to update remote for submodule '%s'"),
+		      list_item->name);
+
+	if (info->recursive) {
+		struct child_process cpr = CHILD_PROCESS_INIT;
+
+		cpr.git_cmd = 1;
+		cpr.dir = list_item->name;
+		prepare_submodule_repo_env(&cpr.env_array);
+
+		argv_array_pushl(&cpr.args, "--super-prefix", displaypath,
+				 "submodule--helper", "sync", "--recursive",
+				 NULL);
+
+		if (info->quiet)
+			argv_array_push(&cpr.args, "--quiet");
+
+		if (run_command(&cpr))
+			die(_("failed to recurse into submodule '%s'"),
+			      list_item->name);
+	}
+
+	free(displaypath);
+	free(sub_origin_url);
+}
+
+static int module_sync(int argc, const char **argv, const char *prefix)
+{
+	struct cb_sync info;
+	struct pathspec pathspec;
+	struct module_list list = MODULE_LIST_INIT;
+	int quiet = 0;
+	int recursive = 0;
+
+	struct option module_sync_options[] = {
+		OPT__QUIET(&quiet, N_("Suppress output of synchronizing submodule url")),
+		OPT_BOOL(0, "recursive", &recursive,
+			 N_("Recurse into nested submodules")),
+		OPT_END()
+	};
+
+	const char *const git_submodule_helper_usage[] = {
+		N_("git submodule--helper sync [--quiet] [--recursive] [<path>]"),
+		NULL
+	};
+
+	argc = parse_options(argc, argv, prefix, module_sync_options,
+			     git_submodule_helper_usage, 0);
+
+	if (module_list_compute(argc, argv, prefix, &pathspec, &list) < 0)
+		return 1;
+
+	info.prefix = prefix;
+	info.quiet = quiet;
+	info.recursive = recursive;
+
+	gitmodules_config();
+	for_each_submodule_list(list, sync_submodule, &info);
 
 	return 0;
 }
@@ -1361,6 +1526,8 @@ static struct cmd_struct commands[] = {
 	{"resolve-relative-url-test", resolve_relative_url_test, 0},
 	{"foreach", module_foreach, SUPPORT_SUPER_PREFIX},
 	{"init", module_init, SUPPORT_SUPER_PREFIX},
+	{"print-default-remote", print_default_remote, 0},
+	{"sync", module_sync, SUPPORT_SUPER_PREFIX},
 	{"remote-branch", resolve_remote_submodule_branch, 0},
 	{"push-check", push_check, 0},
 	{"absorb-git-dirs", absorb_git_dirs, SUPPORT_SUPER_PREFIX},
