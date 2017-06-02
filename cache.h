@@ -597,6 +597,7 @@ extern int read_index_unmerged(struct index_state *);
 #define CLOSE_LOCK		(1 << 1)
 extern int write_locked_index(struct index_state *, struct lock_file *lock, unsigned flags);
 extern int discard_index(struct index_state *);
+extern void move_index_extensions(struct index_state *dst, struct index_state *src);
 extern int unmerged_index(const struct index_state *);
 extern int verify_path(const char *path);
 extern int strcmp_offset(const char *s1, const char *s2, size_t *first_change);
@@ -1333,13 +1334,18 @@ static inline int hex2chr(const char *s)
 
 struct object_context {
 	unsigned char tree[20];
-	char path[PATH_MAX];
 	unsigned mode;
 	/*
 	 * symlink_path is only used by get_tree_entry_follow_symlinks,
 	 * and only for symlinks that point outside the repository.
 	 */
 	struct strbuf symlink_path;
+	/*
+	 * If GET_SHA1_RECORD_PATH is set, this will record path (if any)
+	 * found when resolving the name. The caller is responsible for
+	 * releasing the memory.
+	 */
+	char *path;
 };
 
 #define GET_SHA1_QUIETLY           01
@@ -1349,6 +1355,7 @@ struct object_context {
 #define GET_SHA1_TREEISH          020
 #define GET_SHA1_BLOB             040
 #define GET_SHA1_FOLLOW_SYMLINKS 0100
+#define GET_SHA1_RECORD_PATH     0200
 #define GET_SHA1_ONLY_TO_DIE    04000
 
 #define GET_SHA1_DISAMBIGUATORS \
@@ -1363,7 +1370,7 @@ extern int get_sha1_tree(const char *str, unsigned char *sha1);
 extern int get_sha1_treeish(const char *str, unsigned char *sha1);
 extern int get_sha1_blob(const char *str, unsigned char *sha1);
 extern void maybe_die_on_misspelt_object_name(const char *name, const char *prefix);
-extern int get_sha1_with_context(const char *str, unsigned flags, unsigned char *sha1, struct object_context *orc);
+extern int get_sha1_with_context(const char *str, unsigned flags, unsigned char *sha1, struct object_context *oc);
 
 extern int get_oid(const char *str, struct object_id *oid);
 
@@ -1479,18 +1486,18 @@ struct date_mode {
 #define DATE_MODE(t) date_mode_from_type(DATE_##t)
 struct date_mode *date_mode_from_type(enum date_mode_type type);
 
-const char *show_date(unsigned long time, int timezone, const struct date_mode *mode);
-void show_date_relative(unsigned long time, int tz, const struct timeval *now,
+const char *show_date(timestamp_t time, int timezone, const struct date_mode *mode);
+void show_date_relative(timestamp_t time, int tz, const struct timeval *now,
 			struct strbuf *timebuf);
 int parse_date(const char *date, struct strbuf *out);
-int parse_date_basic(const char *date, unsigned long *timestamp, int *offset);
-int parse_expiry_date(const char *date, unsigned long *timestamp);
+int parse_date_basic(const char *date, timestamp_t *timestamp, int *offset);
+int parse_expiry_date(const char *date, timestamp_t *timestamp);
 void datestamp(struct strbuf *out);
 #define approxidate(s) approxidate_careful((s), NULL)
-unsigned long approxidate_careful(const char *, int *);
-unsigned long approxidate_relative(const char *date, const struct timeval *now);
+timestamp_t approxidate_careful(const char *, int *);
+timestamp_t approxidate_relative(const char *date, const struct timeval *now);
 void parse_date_format(const char *format, struct date_mode *mode);
-int date_overflows(unsigned long date);
+int date_overflows(timestamp_t date);
 
 #define IDENT_STRICT	       1
 #define IDENT_NO_DATE	       2
@@ -2198,8 +2205,8 @@ struct commit_list;
 int try_merge_command(const char *strategy, size_t xopts_nr,
 		const char **xopts, struct commit_list *common,
 		const char *head_arg, struct commit_list *remotes);
-int checkout_fast_forward(const unsigned char *from,
-			  const unsigned char *to,
+int checkout_fast_forward(const struct object_id *from,
+			  const struct object_id *to,
 			  int overwrite_ignore);
 
 

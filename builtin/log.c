@@ -110,6 +110,8 @@ static void init_log_defaults(void)
 {
 	init_grep_defaults();
 	init_diff_ui_defaults();
+
+	decoration_style = auto_decoration_style();
 }
 
 static void cmd_log_init_defaults(struct rev_info *rev)
@@ -410,8 +412,6 @@ static int git_log_config(const char *var, const char *value, void *cb)
 		if (decoration_style < 0)
 			decoration_style = 0; /* maybe warn? */
 		return 0;
-	} else {
-		decoration_style = auto_decoration_style();
 	}
 	if (!strcmp(var, "log.showroot")) {
 		default_show_root = git_config_bool(var, value);
@@ -483,16 +483,20 @@ static int show_blob_object(const struct object_id *oid, struct rev_info *rev, c
 	    !DIFF_OPT_TST(&rev->diffopt, ALLOW_TEXTCONV))
 		return stream_blob_to_fd(1, oid, NULL, 0);
 
-	if (get_sha1_with_context(obj_name, 0, oidc.hash, &obj_context))
+	if (get_sha1_with_context(obj_name, GET_SHA1_RECORD_PATH,
+				  oidc.hash, &obj_context))
 		die(_("Not a valid object name %s"), obj_name);
-	if (!obj_context.path[0] ||
-	    !textconv_object(obj_context.path, obj_context.mode, &oidc, 1, &buf, &size))
+	if (!obj_context.path ||
+	    !textconv_object(obj_context.path, obj_context.mode, &oidc, 1, &buf, &size)) {
+		free(obj_context.path);
 		return stream_blob_to_fd(1, oid, NULL, 0);
+	}
 
 	if (!buf)
 		die(_("git show %s: bad file"), obj_name);
 
 	write_or_die(1, buf, size);
+	free(obj_context.path);
 	return 0;
 }
 
@@ -596,7 +600,7 @@ int cmd_show(int argc, const char **argv, const char *prefix)
 			rev.shown_one = 1;
 			if (ret)
 				break;
-			o = parse_object(t->tagged->oid.hash);
+			o = parse_object(&t->tagged->oid);
 			if (!o)
 				ret = error(_("Could not read object %s"),
 					    oid_to_hex(&t->tagged->oid));
@@ -878,8 +882,8 @@ static void get_patch_ids(struct rev_info *rev, struct patch_ids *ids)
 	o2 = rev->pending.objects[1].item;
 	flags1 = o1->flags;
 	flags2 = o2->flags;
-	c1 = lookup_commit_reference(o1->oid.hash);
-	c2 = lookup_commit_reference(o2->oid.hash);
+	c1 = lookup_commit_reference(&o1->oid);
+	c2 = lookup_commit_reference(&o2->oid);
 
 	if ((flags1 & UNINTERESTING) == (flags2 & UNINTERESTING))
 		die(_("Not a range."));
@@ -910,8 +914,8 @@ static void get_patch_ids(struct rev_info *rev, struct patch_ids *ids)
 static void gen_message_id(struct rev_info *info, char *base)
 {
 	struct strbuf buf = STRBUF_INIT;
-	strbuf_addf(&buf, "%s.%lu.git.%s", base,
-		    (unsigned long) time(NULL),
+	strbuf_addf(&buf, "%s.%"PRItime".git.%s", base,
+		    (timestamp_t) time(NULL),
 		    git_committer_info(IDENT_NO_NAME|IDENT_NO_DATE|IDENT_STRICT));
 	info->message_id = strbuf_detach(&buf, NULL);
 }
@@ -1263,7 +1267,7 @@ static struct commit *get_base_commit(const char *base_commit,
 
 			if (get_oid(upstream, &oid))
 				die(_("Failed to resolve '%s' as a valid ref."), upstream);
-			commit = lookup_commit_or_die(oid.hash, "upstream base");
+			commit = lookup_commit_or_die(&oid, "upstream base");
 			base_list = get_merge_bases_many(commit, total, list);
 			/* There should be one and only one merge base. */
 			if (!base_list || base_list->next)
@@ -1819,7 +1823,7 @@ static int add_pending_commit(const char *arg, struct rev_info *revs, int flags)
 {
 	struct object_id oid;
 	if (get_oid(arg, &oid) == 0) {
-		struct commit *commit = lookup_commit_reference(oid.hash);
+		struct commit *commit = lookup_commit_reference(&oid);
 		if (commit) {
 			commit->object.flags |= flags;
 			add_pending_object(revs, &commit->object, arg);

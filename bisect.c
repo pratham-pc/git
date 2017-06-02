@@ -546,7 +546,7 @@ static unsigned get_prn(unsigned count) {
 
 /*
  * Custom integer square root from
- * http://en.wikipedia.org/wiki/Integer_square_root
+ * https://en.wikipedia.org/wiki/Integer_square_root
  */
 static int sqrti(int val)
 {
@@ -705,7 +705,7 @@ static int bisect_checkout(const unsigned char *bisect_rev, int no_checkout)
 
 static struct commit *get_commit_reference(const struct object_id *oid)
 {
-	struct commit *r = lookup_commit_reference(oid->hash);
+	struct commit *r = lookup_commit_reference(oid);
 	if (!r)
 		die(_("Not a valid commit name %s"), oid_to_hex(oid));
 	return r;
