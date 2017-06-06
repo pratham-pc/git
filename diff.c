@@ -27,7 +27,7 @@
 #endif
 
 static int diff_detect_rename_default;
-static int diff_indent_heuristic; /* experimental */
+static int diff_indent_heuristic = 1;
 static int diff_rename_limit_default = 400;
 static int diff_suppress_blank_empty;
 static int diff_use_color_default = -1;
@@ -290,9 +290,6 @@ int git_diff_ui_config(const char *var, const char *value, void *cb)
 		return 0;
 	}
 
-	if (git_diff_heuristic_config(var, value, cb) < 0)
-		return -1;
-
 	if (!strcmp(var, "diff.wserrorhighlight")) {
 		int val = parse_ws_error_highlight(value);
 		if (val < 0)
@@ -350,6 +347,9 @@ int git_diff_basic_config(const char *var, const char *value, void *cb)
 
 	if (starts_with(var, "submodule."))
 		return parse_submodule_config_option(var, value);
+
+	if (git_diff_heuristic_config(var, value, cb) < 0)
+		return -1;
 
 	return git_default_config(var, value, cb);
 }
@@ -5268,6 +5268,29 @@ size_t fill_textconv(struct userdiff_driver *driver,
 	}
 
 	return size;
+}
+
+int textconv_object(const char *path,
+		    unsigned mode,
+		    const struct object_id *oid,
+		    int oid_valid,
+		    char **buf,
+		    unsigned long *buf_size)
+{
+	struct diff_filespec *df;
+	struct userdiff_driver *textconv;
+
+	df = alloc_filespec(path);
+	fill_filespec(df, oid->hash, oid_valid, mode);
+	textconv = get_textconv(df);
+	if (!textconv) {
+		free_filespec(df);
+		return 0;
+	}
+
+	*buf_size = fill_textconv(textconv, df, buf);
+	free_filespec(df);
+	return 1;
 }
 
 void setup_diff_pager(struct diff_options *opt)
