@@ -9,6 +9,7 @@
  */
 #define NO_THE_INDEX_COMPATIBILITY_MACROS
 #include "cache.h"
+#include "config.h"
 #include "dir.h"
 #include "attr.h"
 #include "refs.h"
@@ -804,7 +805,7 @@ static int add_excludes(const char *fname, const char *base, int baselen,
 				 (pos = index_name_pos(istate, fname, strlen(fname))) >= 0 &&
 				 !ce_stage(istate->cache[pos]) &&
 				 ce_uptodate(istate->cache[pos]) &&
-				 !would_convert_to_git(fname))
+				 !would_convert_to_git(istate, fname))
 				hashcpy(sha1_stat->sha1,
 					istate->cache[pos]->oid.hash);
 			else
@@ -2126,8 +2127,7 @@ int read_directory(struct dir_struct *dir, struct index_state *istate,
 		for (i = j = 0; j < dir->nr; j++) {
 			if (i &&
 			    check_dir_entry_contains(dir->entries[i - 1], dir->entries[j])) {
-				free(dir->entries[j]);
-				dir->entries[j] = NULL;
+				FREE_AND_NULL(dir->entries[j]);
 			} else {
 				dir->entries[i++] = dir->entries[j];
 			}
@@ -2153,8 +2153,7 @@ int read_directory(struct dir_struct *dir, struct index_state *istate,
 		     dir->untracked->dir_invalidated))
 			istate->cache_changed |= UNTRACKED_CHANGED;
 		if (dir->untracked != istate->untracked) {
-			free(dir->untracked);
-			dir->untracked = NULL;
+			FREE_AND_NULL(dir->untracked);
 		}
 	}
 	return dir->nr;
@@ -2497,8 +2496,7 @@ void write_untracked_extension(struct strbuf *out, struct untracked_cache *untra
 	strbuf_addbuf(out, &untracked->ident);
 
 	strbuf_add(out, ouc, ouc_size(len));
-	free(ouc);
-	ouc = NULL;
+	FREE_AND_NULL(ouc);
 
 	if (!untracked->root) {
 		varint_len = encode_varint(0, varbuf);

@@ -1,4 +1,5 @@
 #include "cache.h"
+#include "config.h"
 #include "grep.h"
 #include "userdiff.h"
 #include "xdiff-interface.h"
@@ -508,7 +509,7 @@ static void compile_pcre2_pattern(struct grep_pat *p, const struct grep_opt *opt
 		if (!p->pcre2_jit_stack)
 			die("Couldn't allocate PCRE2 JIT stack");
 		p->pcre2_match_context = pcre2_match_context_create(NULL);
-		if (!p->pcre2_jit_stack)
+		if (!p->pcre2_match_context)
 			die("Couldn't allocate PCRE2 match context");
 		pcre2_jit_stack_assign(p->pcre2_match_context, NULL, p->pcre2_jit_stack);
 	} else if (p->pcre2_jit_on != 0) {
@@ -1939,12 +1940,9 @@ void grep_source_init(struct grep_source *gs, enum grep_source_type type,
 
 void grep_source_clear(struct grep_source *gs)
 {
-	free(gs->name);
-	gs->name = NULL;
-	free(gs->path);
-	gs->path = NULL;
-	free(gs->identifier);
-	gs->identifier = NULL;
+	FREE_AND_NULL(gs->name);
+	FREE_AND_NULL(gs->path);
+	FREE_AND_NULL(gs->identifier);
 	grep_source_clear_data(gs);
 }
 
@@ -1954,8 +1952,7 @@ void grep_source_clear_data(struct grep_source *gs)
 	case GREP_SOURCE_FILE:
 	case GREP_SOURCE_OID:
 	case GREP_SOURCE_SUBMODULE:
-		free(gs->buf);
-		gs->buf = NULL;
+		FREE_AND_NULL(gs->buf);
 		gs->size = 0;
 		break;
 	case GREP_SOURCE_BUF:
