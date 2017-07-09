@@ -54,7 +54,7 @@ UI, Workflows & Features
    even when the other side hasn't enabled allowTipSHA1InWant.
 
  * The recently introduced "[includeIf "gitdir:$dir"] path=..."
-   mechansim has further been taught to take symlinks into account.
+   mechanism has further been taught to take symlinks into account.
    The directory "$dir" specified in "gitdir:$dir" may be a symlink to
    a real location, not something that $(getcwd) may return.  In such
    a case, a realpath of "$dir" is compared with the real path of the
@@ -93,6 +93,17 @@ UI, Workflows & Features
 
  * "git status" learned to optionally give how many stash entries the
    user has in its output.
+
+ * "git status" has long shown essentially the same message as "git
+   commit"; the message it gives while preparing for the root commit,
+   i.e. "Initial commit", was hard to understand for some new users.
+   Now it says "No commits yet" to stress more on the current status
+   (rather than the commit the user is preparing for, which is more in
+   line with the focus of "git commit").
+
+ * "git send-email" learned to overcome some SMTP server limitation
+   that does not allow many pieces of e-mails to be sent over a single
+   session.
 
 
 Performance, Internal Implementation, Development Support etc.
@@ -189,6 +200,20 @@ Performance, Internal Implementation, Development Support etc.
  * A common pattern to free a piece of memory and assign NULL to the
    pointer that used to point at it has been replaced with a new
    FREE_AND_NULL() macro.
+
+ * Traditionally, the default die() routine had a code to prevent it
+   from getting called multiple times, which interacted badly when a
+   threaded program used it (one downside is that the real error may
+   be hidden and instead the only error message given to the user may
+   end up being "die recursion detected", which is not very useful).
+
+ * Introduce a "repository" object to eventually make it easier to
+   work in multiple repositories (the primary focus is to work with
+   the superproject and its submodules) in a single process.
+
+ * Optimize "what are the object names already taken in an alternate
+   object database?" query that is used to derive the length of prefix
+   an object name is uniquely abbreviated to.
 
 
 Also contains various documentation updates and code clean-ups.
@@ -393,7 +418,41 @@ notes for details).
    metacharacter like $ and * did not work.
    (merge d85d7ecb80 jk/add-p-commentchar-fix later to maint).
 
+ * A recent regression in "git rebase -i" has been fixed and tests
+   that would have caught it and others have been added.
+   (merge adf16c08cb pw/rebase-i-regression-fix-tests later to maint).
+
+ * An unaligned 32-bit access in pack-bitmap code ahs been corrected.
+   (merge da41c942b3 jc/pack-bitmap-unaligned later to maint).
+
+ * Tighten error checks for invalid "git apply" input.
+   (merge d70e9c5c8c rs/apply-validate-input later to maint).
+
+ * The split index code did not honor core.sharedrepository setting
+   correctly.
+   (merge 3ee83f48e5 cc/shared-index-permfix later to maint).
+
+ * The Makefile rule in contrib/subtree for building documentation
+   learned to honour USE_ASCIIDOCTOR just like the main documentation
+   set does.
+   (merge fdc1ad97c1 aw/contrib-subtree-doc-asciidoctor later to maint).
+
+ * Update the sha1dc again to fix portability glitches.
+   (merge 9936c1b52a ab/sha1dc-maint later to maint).
+
+ * Code clean-up to fix possible buffer over-reading.
+   (merge 8bc172e5f2 rs/apply-avoid-over-reading later to maint).
+
+ * A few tests that tried to verify the contents of push certificates
+   did not use 'git rev-parse' to formulate the line to look for in
+   the certificate correctly.
+   (merge 8722947e5c js/t5534-rev-parse-gives-multi-line-output-fix later to maint).
+
  * Other minor doc, test and build updates and code cleanups.
    (merge 68241cb9dd sb/t4005-modernize later to maint).
    (merge 4fced24712 ks/t7508-indent-fix later to maint).
    (merge 968b1fe263 mb/reword-autocomplete-message later to maint).
+   (merge 8592c95cdf ah/doc-pretty-color-auto-prefix later to maint).
+   (merge 73fc2aadc7 js/fsck-name-object later to maint).
+   (merge dc4b4a61ba jc/utf8-fprintf later to maint).
+   (merge c2d4b4cd06 sb/merge-recursive-code-cleanup later to maint).
