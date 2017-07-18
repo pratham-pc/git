@@ -4,6 +4,7 @@
 #include "submodule-config.h"
 #include "submodule.h"
 #include "strbuf.h"
+#include "parse-options.h"
 
 /*
  * submodule cache lookup structure
@@ -33,17 +34,19 @@ enum lookup_type {
 	lookup_path
 };
 
-static int config_path_cmp(const struct submodule_entry *a,
+static int config_path_cmp(const void *unused_cmp_data,
+			   const struct submodule_entry *a,
 			   const struct submodule_entry *b,
-			   const void *unused)
+			   const void *unused_keydata)
 {
 	return strcmp(a->config->path, b->config->path) ||
 	       hashcmp(a->config->gitmodules_sha1, b->config->gitmodules_sha1);
 }
 
-static int config_name_cmp(const struct submodule_entry *a,
+static int config_name_cmp(const void *unused_cmp_data,
+			   const struct submodule_entry *a,
 			   const struct submodule_entry *b,
-			   const void *unused)
+			   const void *unused_keydata)
 {
 	return strcmp(a->config->name, b->config->name) ||
 	       hashcmp(a->config->gitmodules_sha1, b->config->gitmodules_sha1);
@@ -56,8 +59,8 @@ static struct submodule_cache *submodule_cache_alloc(void)
 
 static void submodule_cache_init(struct submodule_cache *cache)
 {
-	hashmap_init(&cache->for_path, (hashmap_cmp_fn) config_path_cmp, 0);
-	hashmap_init(&cache->for_name, (hashmap_cmp_fn) config_name_cmp, 0);
+	hashmap_init(&cache->for_path, (hashmap_cmp_fn) config_path_cmp, NULL, 0);
+	hashmap_init(&cache->for_name, (hashmap_cmp_fn) config_name_cmp, NULL, 0);
 	cache->initialized = 1;
 }
 
@@ -248,6 +251,27 @@ static int parse_fetch_recurse(const char *opt, const char *arg,
 int parse_fetch_recurse_submodules_arg(const char *opt, const char *arg)
 {
 	return parse_fetch_recurse(opt, arg, 1);
+}
+
+int option_fetch_parse_recurse_submodules(const struct option *opt,
+					  const char *arg, int unset)
+{
+	int *v;
+
+	if (!opt->value)
+		return -1;
+
+	v = opt->value;
+
+	if (unset) {
+		*v = RECURSE_SUBMODULES_OFF;
+	} else {
+		if (arg)
+			*v = parse_fetch_recurse_submodules_arg(opt->long_name, arg);
+		else
+			*v = RECURSE_SUBMODULES_ON;
+	}
+	return 0;
 }
 
 static int parse_update_recurse(const char *opt, const char *arg,

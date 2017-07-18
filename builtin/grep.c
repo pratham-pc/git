@@ -543,7 +543,7 @@ static void compile_submodule_options(const struct grep_opt *opt,
 	 * submodule process has its own thread pool.
 	 */
 	argv_array_pushf(&submodule_options, "--threads=%d",
-			 (num_threads + 1) / 2);
+			 DIV_ROUND_UP(num_threads, 2));
 
 	/* Add Pathspecs */
 	argv_array_push(&submodule_options, "--");
@@ -1170,8 +1170,6 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 
 	if (!opt.pattern_list)
 		die(_("no pattern given."));
-	if (!opt.fixed && opt.ignore_case)
-		opt.regflags |= REG_ICASE;
 
 	/*
 	 * We have to find "--" in a separate pass, because its presence
