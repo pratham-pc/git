@@ -484,13 +484,6 @@ Submodule work tree '\$displaypath' contains a .git directory
 	done
 }
 
-is_tip_reachable () (
-	sanitize_submodule_env &&
-	cd "$1" &&
-	rev=$(git rev-list -n 1 "$2" --not --all 2>/dev/null) &&
-	test -z "$rev"
-)
-
 fetch_in_submodule () (
 	sanitize_submodule_env &&
 	cd "$1" &&
@@ -666,13 +659,13 @@ cmd_update()
 			then
 				# Run fetch only if $sha1 isn't present or it
 				# is not reachable from a ref.
-				is_tip_reachable "$sm_path" "$sha1" ||
+				git submodule--helper is-tip-reachable "$sm_path" "$sha1" ||
 				fetch_in_submodule "$sm_path" $depth ||
 				die "$(eval_gettext "Unable to fetch in submodule path '\$displaypath'")"
 
 				# Now we tried the usual fetch, but $sha1 may
 				# not be reachable from any of the refs
-				is_tip_reachable "$sm_path" "$sha1" ||
+				git submodule--helper is-tip-reachable "$sm_path" "$sha1" ||
 				fetch_in_submodule "$sm_path" $depth "$sha1" ||
 				die "$(eval_gettext "Fetched in submodule path '\$displaypath', but it did not contain \$sha1. Direct fetching of that commit failed.")"
 			fi
