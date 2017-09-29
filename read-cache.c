@@ -220,6 +220,7 @@ static int ce_modified_check_fs(const struct cache_entry *ce, struct stat *st)
 	case S_IFDIR:
 		if (S_ISGITLINK(ce->ce_mode))
 			return ce_compare_gitlink(ce) ? DATA_CHANGED : 0;
+		/* else fallthrough */
 	default:
 		return TYPE_CHANGED;
 	}
@@ -1922,7 +1923,7 @@ static int ce_write_flush(git_SHA_CTX *context, int fd)
 	unsigned int buffered = write_buffer_len;
 	if (buffered) {
 		git_SHA1_Update(context, write_buffer, buffered);
-		if (write_in_full(fd, write_buffer, buffered) != buffered)
+		if (write_in_full(fd, write_buffer, buffered) < 0)
 			return -1;
 		write_buffer_len = 0;
 	}
@@ -1971,7 +1972,7 @@ static int ce_flush(git_SHA_CTX *context, int fd, unsigned char *sha1)
 
 	/* Flush first if not enough space for SHA1 signature */
 	if (left + 20 > WRITE_BUFFER_SIZE) {
-		if (write_in_full(fd, write_buffer, left) != left)
+		if (write_in_full(fd, write_buffer, left) < 0)
 			return -1;
 		left = 0;
 	}
@@ -1980,7 +1981,7 @@ static int ce_flush(git_SHA_CTX *context, int fd, unsigned char *sha1)
 	git_SHA1_Final(write_buffer + left, context);
 	hashcpy(sha1, write_buffer + left);
 	left += 20;
-	return (write_in_full(fd, write_buffer, left) != left) ? -1 : 0;
+	return (write_in_full(fd, write_buffer, left) < 0) ? -1 : 0;
 }
 
 static void ce_smudge_racily_clean_entry(struct cache_entry *ce)
@@ -2103,7 +2104,9 @@ static int ce_write_entry(git_SHA_CTX *c, int fd, struct cache_entry *ce,
 		if (!result)
 			result = ce_write(c, fd, to_remove_vi, prefix_size);
 		if (!result)
-			result = ce_write(c, fd, ce->name + common, ce_namelen(ce) - common + 1);
+			result = ce_write(c, fd, ce->name + common, ce_namelen(ce) - common);
+		if (!result)
+			result = ce_write(c, fd, padding, 1);
 
 		strbuf_splice(previous_name, common, to_remove,
 			      ce->name + common, ce_namelen(ce) - common);

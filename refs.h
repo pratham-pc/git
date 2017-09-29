@@ -10,10 +10,11 @@ struct worktree;
 /*
  * Resolve a reference, recursively following symbolic refererences.
  *
- * Store the referred-to object's name in sha1 and return the name of
- * the non-symbolic reference that ultimately pointed at it.  The
- * return value, if not NULL, is a pointer into either a static buffer
- * or the input ref.
+ * Return the name of the non-symbolic reference that ultimately pointed
+ * at the resolved object name.  The return value, if not NULL, is a
+ * pointer into either a static buffer or the input ref.
+ *
+ * If sha1 is non-NULL, store the referred-to object's name in it.
  *
  * If the reference cannot be resolved to an object, the behavior
  * depends on the RESOLVE_REF_READING flag:
@@ -343,6 +344,14 @@ int refs_pack_refs(struct ref_store *refs, unsigned int flags);
  */
 #define REF_NODEREF	0x01
 #define REF_FORCE_CREATE_REFLOG 0x40
+
+/*
+ * Flags that can be passed in to ref_transaction_update
+ */
+#define REF_TRANSACTION_UPDATE_ALLOWED_FLAGS \
+	REF_ISPRUNING |                      \
+	REF_FORCE_CREATE_REFLOG |            \
+	REF_NODEREF
 
 /*
  * Setup reflog before using. Fill in err and return -1 on failure.

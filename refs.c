@@ -239,8 +239,7 @@ int read_ref(const char *refname, unsigned char *sha1)
 
 int ref_exists(const char *refname)
 {
-	unsigned char sha1[20];
-	return !!resolve_ref_unsafe(refname, RESOLVE_REF_READING, sha1, NULL);
+	return !!resolve_ref_unsafe(refname, RESOLVE_REF_READING, NULL, NULL);
 }
 
 static int filter_refs(const char *refname, const struct object_id *oid,
@@ -286,12 +285,11 @@ static int warn_if_dangling_symref(const char *refname, const struct object_id *
 {
 	struct warn_if_dangling_data *d = cb_data;
 	const char *resolves_to;
-	struct object_id junk;
 
 	if (!(flags & REF_ISSYMREF))
 		return 0;
 
-	resolves_to = resolve_ref_unsafe(refname, 0, junk.hash, NULL);
+	resolves_to = resolve_ref_unsafe(refname, 0, NULL, NULL);
 	if (!resolves_to
 	    || (d->refname
 		? strcmp(resolves_to, d->refname)
@@ -609,7 +607,7 @@ static int write_pseudoref(const char *pseudoref, const unsigned char *sha1,
 		}
 	}
 
-	if (write_in_full(fd, buf.buf, buf.len) != buf.len) {
+	if (write_in_full(fd, buf.buf, buf.len) < 0) {
 		strbuf_addf(err, "could not write to '%s'", filename);
 		rollback_lock_file(&lock);
 		goto done;
@@ -938,6 +936,8 @@ int ref_transaction_update(struct ref_transaction *transaction,
 			    refname);
 		return -1;
 	}
+
+	flags &= REF_TRANSACTION_UPDATE_ALLOWED_FLAGS;
 
 	flags |= (new_sha1 ? REF_HAVE_NEW : 0) | (old_sha1 ? REF_HAVE_OLD : 0);
 
@@ -1357,7 +1357,7 @@ int for_each_replace_ref(each_ref_fn fn, void *cb_data)
 	return do_for_each_ref(get_main_ref_store(),
 			       git_replace_ref_base, fn,
 			       strlen(git_replace_ref_base),
-			       0, cb_data);
+			       DO_FOR_EACH_INCLUDE_BROKEN, cb_data);
 }
 
 int for_each_namespaced_ref(each_ref_fn fn, void *cb_data)
@@ -1396,9 +1396,12 @@ const char *refs_resolve_ref_unsafe(struct ref_store *refs,
 				    unsigned char *sha1, int *flags)
 {
 	static struct strbuf sb_refname = STRBUF_INIT;
+	struct object_id unused_oid;
 	int unused_flags;
 	int symref_count;
 
+	if (!sha1)
+		sha1 = unused_oid.hash;
 	if (!flags)
 		flags = &unused_flags;
 
