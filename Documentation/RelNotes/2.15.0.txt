@@ -65,7 +65,7 @@ UI, Workflows & Features
    learned to take the 'unfold' and 'only' modifiers to normalize its
    output, e.g. "git log --format=%(trailers:only,unfold)".
 
- * "gitweb" shows a link to visit the 'raw' contents of blbos in the
+ * "gitweb" shows a link to visit the 'raw' contents of blobs in the
    history overview page.
 
  * "[gc] rerereResolved = 5.days" used to be invalid, as the variable
@@ -109,13 +109,13 @@ Performance, Internal Implementation, Development Support etc.
  * Conversion from uchar[20] to struct object_id continues.
 
  * Start using selected c99 constructs in small, stable and
-   essentialpart of the system to catch people who care about
+   essential part of the system to catch people who care about
    older compilers that do not grok them.
 
  * The filter-process interface learned to allow a process with long
    latency give a "delayed" response.
 
- * Many uses of comparision callback function the hashmap API uses
+ * Many uses of comparison callback function the hashmap API uses
    cast the callback function type when registering it to
    hashmap_init(), which defeats the compile time type checking when
    the callback interface changes (e.g. gaining more parameters).
@@ -478,6 +478,20 @@ Fixes since v2.14
  * An ancient bug that made Git misbehave with creation/renaming of
    refs has been fixed.
 
+ * "git fetch <there> <src>:<dst>" allows an object name on the <src>
+   side when the other side accepts such a request since Git v2.5, but
+   the documentation was left stale.
+   (merge 83558a412a jc/fetch-refspec-doc-update later to maint).
+
+ * Update the documentation for "git filter-branch" so that the filter
+   options are listed in the same order as they are applied, as
+   described in an earlier part of the doc.
+   (merge 07c4984508 dg/filter-branch-filter-order-doc later to maint).
+
+ * A possible oom error is now caught as a fatal error, instead of
+   continuing and dereferencing NULL.
+   (merge 55d7d15847 ao/path-use-xmalloc later to maint).
+
  * Other minor doc, test and build updates and code cleanups.
    (merge f094b89a4d ma/parse-maybe-bool later to maint).
    (merge 6cdf8a7929 ma/ts-cleanups later to maint).
@@ -487,3 +501,8 @@ Fixes since v2.14
    (merge f777623514 ks/branch-tweak-error-message-for-extra-args later to maint).
    (merge 33f3c683ec ks/verify-filename-non-option-error-message-tweak later to maint).
    (merge 7cbbf9d6a2 ls/filter-process-delayed later to maint).
+   (merge 488aa65c8f wk/merge-options-gpg-sign-doc later to maint).
+   (merge e61cb19a27 jc/branch-force-doc-readability-fix later to maint).
+   (merge 32fceba3fd np/config-path-doc later to maint).
+   (merge e38c681fb7 sb/rev-parse-show-superproject-root later to maint).
+   (merge 4f851dc883 sg/rev-list-doc-reorder-fix later to maint).

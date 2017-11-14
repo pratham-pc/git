@@ -565,7 +565,7 @@ static int read_remote_branches(const char *refname,
 		item = string_list_append(rename->remote_branches, xstrdup(refname));
 		symref = resolve_ref_unsafe(refname, RESOLVE_REF_READING,
 					    NULL, &flag);
-		if (flag & REF_ISSYMREF)
+		if (symref && (flag & REF_ISSYMREF))
 			item->util = xstrdup(symref);
 		else
 			item->util = NULL;
@@ -690,7 +690,7 @@ static int mv(int argc, const char **argv)
 		int flag = 0;
 		struct object_id oid;
 
-		read_ref_full(item->string, RESOLVE_REF_READING, oid.hash, &flag);
+		read_ref_full(item->string, RESOLVE_REF_READING, &oid, &flag);
 		if (!(flag & REF_ISSYMREF))
 			continue;
 		if (delete_ref(NULL, item->string, NULL, REF_NODEREF))

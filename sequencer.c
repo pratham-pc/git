@@ -393,7 +393,7 @@ static int fast_forward_to(const struct object_id *to, const struct object_id *f
 	transaction = ref_transaction_begin(&err);
 	if (!transaction ||
 	    ref_transaction_update(transaction, "HEAD",
-				   to->hash, unborn ? null_sha1 : from->hash,
+				   to, unborn ? &null_oid : from,
 				   0, sb.buf, &err) ||
 	    ref_transaction_commit(transaction, &err)) {
 		ref_transaction_free(transaction);
@@ -489,7 +489,7 @@ static int is_index_unchanged(void)
 	struct object_id head_oid;
 	struct commit *head_commit;
 
-	if (!resolve_ref_unsafe("HEAD", RESOLVE_REF_READING, head_oid.hash, NULL))
+	if (!resolve_ref_unsafe("HEAD", RESOLVE_REF_READING, &head_oid, NULL))
 		return error(_("could not resolve HEAD commit\n"));
 
 	head_commit = lookup_commit(&head_oid);
@@ -959,7 +959,8 @@ static int do_pick_commit(enum todo_command command, struct commit *commit,
 		unborn = get_oid("HEAD", &head);
 		if (unborn)
 			oidcpy(&head, &empty_tree_oid);
-		if (index_differs_from(unborn ? EMPTY_TREE_SHA1_HEX : "HEAD", 0, 0))
+		if (index_differs_from(unborn ? EMPTY_TREE_SHA1_HEX : "HEAD",
+				       NULL, 0))
 			return error_dirty_index(opts);
 	}
 	discard_cache();
@@ -1115,11 +1116,11 @@ static int do_pick_commit(enum todo_command command, struct commit *commit,
 	 * write it at all.
 	 */
 	if (command == TODO_PICK && !opts->no_commit && (res == 0 || res == 1) &&
-	    update_ref(NULL, "CHERRY_PICK_HEAD", commit->object.oid.hash, NULL,
+	    update_ref(NULL, "CHERRY_PICK_HEAD", &commit->object.oid, NULL,
 		       REF_NODEREF, UPDATE_REFS_MSG_ON_ERR))
 		res = -1;
 	if (command == TODO_REVERT && ((opts->no_commit && res == 0) || res == 1) &&
-	    update_ref(NULL, "REVERT_HEAD", commit->object.oid.hash, NULL,
+	    update_ref(NULL, "REVERT_HEAD", &commit->object.oid, NULL,
 		       REF_NODEREF, UPDATE_REFS_MSG_ON_ERR))
 		res = -1;
 
@@ -1184,7 +1185,6 @@ static int read_and_refresh_cache(struct replay_opts *opts)
 	refresh_index(&the_index, REFRESH_QUIET|REFRESH_UNMERGED, NULL, NULL, NULL);
 	if (the_index.cache_changed && index_fd >= 0) {
 		if (write_locked_index(&the_index, &index_lock, COMMIT_LOCK)) {
-			rollback_lock_file(&index_lock);
 			return error(_("git %s: failed to refresh the index"),
 				_(action_name(opts)));
 		}
@@ -1630,7 +1630,7 @@ static int rollback_single_pick(void)
 	if (!file_exists(git_path_cherry_pick_head()) &&
 	    !file_exists(git_path_revert_head()))
 		return error(_("no cherry-pick or revert in progress"));
-	if (read_ref_full("HEAD", 0, head_oid.hash, NULL))
+	if (read_ref_full("HEAD", 0, &head_oid, NULL))
 		return error(_("cannot resolve HEAD"));
 	if (is_null_oid(&head_oid))
 		return error(_("cannot abort from a branch yet to be born"));
@@ -1862,12 +1862,15 @@ static int error_failed_squash(struct commit *commit,
 
 static int do_exec(const char *command_line)
 {
+	struct argv_array child_env = ARGV_ARRAY_INIT;
 	const char *child_argv[] = { NULL, NULL };
 	int dirty, status;
 
 	fprintf(stderr, "Executing: %s\n", command_line);
 	child_argv[0] = command_line;
-	status = run_command_v_opt(child_argv, RUN_USING_SHELL);
+	argv_array_pushf(&child_env, "GIT_DIR=%s", absolute_path(get_git_dir()));
+	status = run_command_v_opt_cd_env(child_argv, RUN_USING_SHELL, NULL,
+					  child_env.argv);
 
 	/* force re-reading of the cache */
 	if (discard_cache() < 0 || read_cache() < 0)
@@ -1896,6 +1899,8 @@ static int do_exec(const char *command_line)
 			  "\n"), command_line);
 		status = 1;
 	}
+
+	argv_array_clear(&child_env);
 
 	return status;
 }
@@ -2124,8 +2129,8 @@ cleanup_head_ref:
 			}
 			msg = reflog_message(opts, "finish", "%s onto %s",
 				head_ref.buf, buf.buf);
-			if (update_ref(msg, head_ref.buf, head.hash, orig.hash,
-					REF_NODEREF, UPDATE_REFS_MSG_ON_ERR)) {
+			if (update_ref(msg, head_ref.buf, &head, &orig,
+				       REF_NODEREF, UPDATE_REFS_MSG_ON_ERR)) {
 				res = error(_("could not update %s"),
 					head_ref.buf);
 				goto cleanup_head_ref;
@@ -2279,7 +2284,7 @@ int sequencer_continue(struct replay_opts *opts)
 			if (res)
 				goto release_todo_list;
 		}
-		if (index_differs_from("HEAD", 0, 0)) {
+		if (index_differs_from("HEAD", NULL, 0)) {
 			res = error_dirty_index(opts);
 			goto release_todo_list;
 		}

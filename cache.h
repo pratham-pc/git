@@ -602,9 +602,28 @@ extern int do_read_index(struct index_state *istate, const char *path,
 extern int read_index_from(struct index_state *, const char *path);
 extern int is_index_unborn(struct index_state *);
 extern int read_index_unmerged(struct index_state *);
+
+/* For use with `write_locked_index()`. */
 #define COMMIT_LOCK		(1 << 0)
-#define CLOSE_LOCK		(1 << 1)
+
+/*
+ * Write the index while holding an already-taken lock. Close the lock,
+ * and if `COMMIT_LOCK` is given, commit it.
+ *
+ * Unless a split index is in use, write the index into the lockfile.
+ *
+ * With a split index, write the shared index to a temporary file,
+ * adjust its permissions and rename it into place, then write the
+ * split index to the lockfile. If the temporary file for the shared
+ * index cannot be created, fall back to the behavior described in
+ * the previous paragraph.
+ *
+ * With `COMMIT_LOCK`, the lock is always committed or rolled back.
+ * Without it, the lock is closed, but neither committed nor rolled
+ * back.
+ */
 extern int write_locked_index(struct index_state *, struct lock_file *lock, unsigned flags);
+
 extern int discard_index(struct index_state *);
 extern void move_index_extensions(struct index_state *dst, struct index_state *src);
 extern int unmerged_index(const struct index_state *);
@@ -716,6 +735,10 @@ extern void fill_stat_cache_info(struct cache_entry *ce, struct stat *st);
 extern int refresh_index(struct index_state *, unsigned int flags, const struct pathspec *pathspec, char *seen, const char *header_msg);
 extern struct cache_entry *refresh_cache_entry(struct cache_entry *, unsigned int);
 
+/*
+ * Opportunistically update the index but do not complain if we can't.
+ * The lockfile is always committed or rolled back.
+ */
 extern void update_index_if_able(struct index_state *, struct lock_file *);
 
 extern int hold_locked_index(struct lock_file *, int);
@@ -1316,6 +1339,13 @@ extern int set_disambiguate_hint_config(const char *var, const char *value);
  */
 extern int get_sha1_hex(const char *hex, unsigned char *sha1);
 extern int get_oid_hex(const char *hex, struct object_id *sha1);
+
+/*
+ * Read `len` pairs of hexadecimal digits from `hex` and write the
+ * values to `binary` as `len` bytes. Return 0 on success, or -1 if
+ * the input does not consist of hex digits).
+ */
+extern int hex_to_bytes(unsigned char *binary, const char *hex, size_t len);
 
 /*
  * Convert a binary sha1 to its hex equivalent. The `_r` variant is reentrant,

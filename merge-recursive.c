@@ -540,8 +540,8 @@ static struct string_list *get_renames(struct merge_options *o,
 		return renames;
 
 	diff_setup(&opts);
-	DIFF_OPT_SET(&opts, RECURSIVE);
-	DIFF_OPT_CLR(&opts, RENAME_EMPTY);
+	opts.flags.recursive = 1;
+	opts.flags.rename_empty = 0;
 	opts.detect_rename = DIFF_DETECT_RENAME;
 	opts.rename_limit = o->merge_rename_limit >= 0 ? o->merge_rename_limit :
 			    o->diff_rename_limit >= 0 ? o->diff_rename_limit :
@@ -2162,7 +2162,7 @@ int merge_recursive_generic(struct merge_options *o,
 			    struct commit **result)
 {
 	int clean;
-	struct lock_file *lock = xcalloc(1, sizeof(struct lock_file));
+	struct lock_file lock = LOCK_INIT;
 	struct commit *head_commit = get_ref(head, o->branch1);
 	struct commit *next_commit = get_ref(merge, o->branch2);
 	struct commit_list *ca = NULL;
@@ -2178,14 +2178,14 @@ int merge_recursive_generic(struct merge_options *o,
 		}
 	}
 
-	hold_locked_index(lock, LOCK_DIE_ON_ERROR);
+	hold_locked_index(&lock, LOCK_DIE_ON_ERROR);
 	clean = merge_recursive(o, head_commit, next_commit, ca,
 			result);
 	if (clean < 0)
 		return clean;
 
 	if (active_cache_changed &&
-	    write_locked_index(&the_index, lock, COMMIT_LOCK))
+	    write_locked_index(&the_index, &lock, COMMIT_LOCK))
 		return err(o, _("Unable to write index."));
 
 	return clean ? 0 : 1;
