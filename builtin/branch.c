@@ -258,7 +258,7 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 		}
 
 		if (delete_ref(NULL, name, is_null_oid(&oid) ? NULL : &oid,
-			       REF_NODEREF)) {
+			       REF_NO_DEREF)) {
 			error(remote_branch
 			      ? _("Error deleting remote-tracking branch '%s'")
 			      : _("Error deleting branch '%s'"),
@@ -463,7 +463,6 @@ static void copy_or_rename_branch(const char *oldname, const char *newname, int 
 	struct strbuf oldref = STRBUF_INIT, newref = STRBUF_INIT, logmsg = STRBUF_INIT;
 	struct strbuf oldsection = STRBUF_INIT, newsection = STRBUF_INIT;
 	int recovery = 0;
-	int clobber_head_ok;
 
 	if (!oldname) {
 		if (copy)
@@ -487,9 +486,10 @@ static void copy_or_rename_branch(const char *oldname, const char *newname, int 
 	 * A command like "git branch -M currentbranch currentbranch" cannot
 	 * cause the worktree to become inconsistent with HEAD, so allow it.
 	 */
-	clobber_head_ok = !strcmp(oldname, newname);
-
-	validate_new_branchname(newname, &newref, force, clobber_head_ok);
+	if (!strcmp(oldname, newname))
+		validate_branchname(newname, &newref);
+	else
+		validate_new_branchname(newname, &newref, force);
 
 	reject_rebase_or_bisect_branch(oldref.buf);
 
@@ -675,6 +675,9 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		copy *= 2;
 	}
 
+	if (list)
+		setup_auto_pager("branch", 1);
+
 	if (delete) {
 		if (!argc)
 			die(_("branch name required"));
@@ -792,9 +795,6 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		strbuf_release(&buf);
 	} else if (argc > 0 && argc <= 2) {
 		struct branch *branch = branch_get(argv[0]);
-
-		if (!strcmp(argv[0], "HEAD"))
-			die(_("it does not make sense to create 'HEAD' manually"));
 
 		if (!branch)
 			die(_("no such branch '%s'"), argv[0]);

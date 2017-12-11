@@ -74,6 +74,18 @@ static struct cached_object *find_cached_object(const unsigned char *sha1)
 	return NULL;
 }
 
+
+static enum safe_crlf get_safe_crlf(unsigned flags)
+{
+	if (flags & HASH_RENORMALIZE)
+		return SAFE_CRLF_RENORMALIZE;
+	else if (flags & HASH_WRITE_OBJECT)
+		return safe_crlf;
+	else
+		return SAFE_CRLF_FALSE;
+}
+
+
 int mkdir_in_gitdir(const char *path)
 {
 	if (mkdir(path, 0777)) {
@@ -404,6 +416,9 @@ static void link_alt_odb_entries(const char *alt, int sep,
 	struct strbuf objdirbuf = STRBUF_INIT;
 	struct strbuf entry = STRBUF_INIT;
 
+	if (!alt || !*alt)
+		return;
+
 	if (depth > 5) {
 		error("%s: ignoring alternate object stores, nesting too deep.",
 				relative_base);
@@ -604,7 +619,6 @@ void prepare_alt_odb(void)
 		return;
 
 	alt = getenv(ALTERNATE_DB_ENVIRONMENT);
-	if (!alt) alt = "";
 
 	alt_odb_tail = &alt_odb_list;
 	link_alt_odb_entries(alt, PATH_SEP, NULL, 0);
@@ -1150,6 +1164,9 @@ int sha1_object_info_extended(const unsigned char *sha1, struct object_info *oi,
 				    lookup_replace_object(sha1) :
 				    sha1;
 
+	if (is_null_sha1(real))
+		return -1;
+
 	if (!oi)
 		oi = &blank_oi;
 
@@ -1677,7 +1694,7 @@ static int index_mem(struct object_id *oid, void *buf, size_t size,
 	if ((type == OBJ_BLOB) && path) {
 		struct strbuf nbuf = STRBUF_INIT;
 		if (convert_to_git(&the_index, path, buf, size, &nbuf,
-				   write_object ? safe_crlf : SAFE_CRLF_FALSE)) {
+				   get_safe_crlf(flags))) {
 			buf = strbuf_detach(&nbuf, &size);
 			re_allocated = 1;
 		}
@@ -1711,7 +1728,7 @@ static int index_stream_convert_blob(struct object_id *oid, int fd,
 	assert(would_convert_to_git_filter_fd(path));
 
 	convert_to_git_filter_fd(&the_index, path, fd, &sbuf,
-				 write_object ? safe_crlf : SAFE_CRLF_FALSE);
+				 get_safe_crlf(flags));
 
 	if (write_object)
 		ret = write_sha1_file(sbuf.buf, sbuf.len, typename(OBJ_BLOB),

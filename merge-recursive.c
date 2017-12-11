@@ -1901,8 +1901,9 @@ static int process_entry(struct merge_options *o,
 			oid = b_oid;
 			conf = _("directory/file");
 		}
-		if (dir_in_way(path, !o->call_depth,
-			       S_ISGITLINK(a_mode))) {
+		if (dir_in_way(path,
+			       !o->call_depth && !S_ISGITLINK(a_mode),
+			       0)) {
 			char *new_path = unique_path(o, path, add_branch);
 			clean_merge = 0;
 			output(o, 1, _("CONFLICT (%s): There is a directory with name %s in %s. "
@@ -2201,6 +2202,7 @@ static void merge_recursive_config(struct merge_options *o)
 
 void init_merge_options(struct merge_options *o)
 {
+	const char *merge_verbosity;
 	memset(o, 0, sizeof(struct merge_options));
 	o->verbosity = 2;
 	o->buffer_output = 1;
@@ -2209,9 +2211,9 @@ void init_merge_options(struct merge_options *o)
 	o->renormalize = 0;
 	o->detect_rename = 1;
 	merge_recursive_config(o);
-	if (getenv("GIT_MERGE_VERBOSITY"))
-		o->verbosity =
-			strtol(getenv("GIT_MERGE_VERBOSITY"), NULL, 10);
+	merge_verbosity = getenv("GIT_MERGE_VERBOSITY");
+	if (merge_verbosity)
+		o->verbosity = strtol(merge_verbosity, NULL, 10);
 	if (o->verbosity >= 5)
 		o->buffer_output = 0;
 	strbuf_init(&o->obuf, 0);
@@ -2251,6 +2253,8 @@ int parse_merge_opt(struct merge_options *o, const char *s)
 		DIFF_XDL_SET(o, IGNORE_WHITESPACE);
 	else if (!strcmp(s, "ignore-space-at-eol"))
 		DIFF_XDL_SET(o, IGNORE_WHITESPACE_AT_EOL);
+	else if (!strcmp(s, "ignore-cr-at-eol"))
+		DIFF_XDL_SET(o, IGNORE_CR_AT_EOL);
 	else if (!strcmp(s, "renormalize"))
 		o->renormalize = 1;
 	else if (!strcmp(s, "no-renormalize"))

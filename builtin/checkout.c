@@ -663,7 +663,7 @@ static void update_refs_for_switch(const struct checkout_opts *opts,
 		/* Nothing to do. */
 	} else if (opts->force_detach || !new->path) {	/* No longer on any branch. */
 		update_ref(msg.buf, "HEAD", &new->commit->object.oid, NULL,
-			   REF_NODEREF, UPDATE_REFS_DIE_ON_ERR);
+			   REF_NO_DEREF, UPDATE_REFS_DIE_ON_ERR);
 		if (!opts->quiet) {
 			if (old->path &&
 			    advice_detached_head && !opts->force_detach)
@@ -1287,11 +1287,11 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 	if (opts.new_branch) {
 		struct strbuf buf = STRBUF_INIT;
 
-		opts.branch_exists =
-			validate_new_branchname(opts.new_branch, &buf,
-						!!opts.new_branch_force,
-						!!opts.new_branch_force);
-
+		if (opts.new_branch_force)
+			opts.branch_exists = validate_branchname(opts.new_branch, &buf);
+		else
+			opts.branch_exists =
+				validate_new_branchname(opts.new_branch, &buf, 0);
 		strbuf_release(&buf);
 	}
 
