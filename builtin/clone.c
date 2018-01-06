@@ -452,7 +452,8 @@ static void clone_local(const char *src_repo, const char *dest_repo)
 {
 	if (option_shared) {
 		struct strbuf alt = STRBUF_INIT;
-		strbuf_addf(&alt, "%s/objects", src_repo);
+		get_common_dir(&alt, src_repo);
+		strbuf_addstr(&alt, "/objects");
 		add_to_alternates_file(alt.buf);
 		strbuf_release(&alt);
 	} else {
@@ -1081,9 +1082,6 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	if (option_local > 0 && !is_local)
 		warning(_("--local is ignored"));
 	transport->cloning = 1;
-
-	if (!transport->get_refs_list || (!is_local && !transport->fetch))
-		die(_("Don't know how to clone %s"), transport->url);
 
 	transport_set_option(transport, TRANS_OPT_KEEP, "yes");
 

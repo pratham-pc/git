@@ -646,7 +646,7 @@ static int remove_file(struct merge_options *o, int clean,
 		if (ignore_case) {
 			struct cache_entry *ce;
 			ce = cache_file_exists(path, strlen(path), ignore_case);
-			if (ce && ce_stage(ce) == 0)
+			if (ce && ce_stage(ce) == 0 && strcmp(path, ce->name))
 				return 0;
 		}
 		if (remove_path(path))
@@ -1952,6 +1952,13 @@ int merge_trees(struct merge_options *o,
 	}
 
 	if (oid_eq(&common->object.oid, &merge->object.oid)) {
+		struct strbuf sb = STRBUF_INIT;
+
+		if (index_has_changes(&sb)) {
+			err(o, _("Dirty index: cannot merge (dirty: %s)"),
+			    sb.buf);
+			return 0;
+		}
 		output(o, 0, _("Already up to date!"));
 		*result = head;
 		return 1;
